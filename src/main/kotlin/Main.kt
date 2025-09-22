@@ -1,5 +1,8 @@
+import ast.Program
 import cli.CLIArguments.parseArgs
 import front.Lexer
+import front.Parser
+import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.system.exitProcess
@@ -47,7 +50,14 @@ fun main(argv: Array<String>) {
             return
         }
 
-        println("Lexed ${tokens.size} tokens successfully")
+        val program: Program = Parser(tokens, path.fileName.toString()).parseProgram()
+        if(args.emitAst) {
+            val json = Json { prettyPrint = true; classDiscriminator = "kind" }
+            println(json.encodeToString(Program.serializer(), program))
+            return
+        }
+
+        println("Parsed successfully: ${path.toAbsolutePath()}")
     } catch(e: RuntimeException) {
         System.err.println(e.message)
         exitProcess(2)

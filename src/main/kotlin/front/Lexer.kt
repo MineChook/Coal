@@ -69,39 +69,24 @@ class Lexer(
     }
 
     private fun lexNumber(start: Int, line0: Int, col0: Int) {
-        val sb = StringBuilder()
-        while(true) {
-            val c = peek()
-            when {
-                isDigit(c) -> sb.append(advance())
-                c == '_' -> advance()
-                else -> break
-            }
-        }
+        while(isDigit(peek()) || peek() == '_') advance()
 
         var isFloat = false
         if(peek() == '.' && isDigit(peek(1))) {
             isFloat = true
-            sb.append(advance())
-            while(true) {
-                val c = peek()
-                when {
-                    isDigit(c) -> sb.append(advance())
-                    c == '_' -> advance()
-                    else -> break
-                }
-            }
+            advance()
+            while(isDigit(peek()) || peek() == '_') advance()
         }
 
         val end = i
-        val text = source.substring(start, end)
-        val cleanText = sb.toString()
+        val raw = source.substring(start, end)
+        val clean = raw.replace("_", "")
         if(isFloat) {
-            val v = cleanText.toDouble()
-            tokens += Token(TokenKind.FloatLiteral, text, Span(start, end, line0, col0), floatValue = v)
+            val v = clean.toDouble()
+            tokens += Token(TokenKind.FloatLiteral, raw, Span(start, end, line0, col0), floatValue = v)
         } else {
-            val v = cleanText.toLong()
-            tokens += Token(TokenKind.IntLiteral, text, Span(start, end, line0, col0), intValue = v)
+            val v = clean.toLong()
+            tokens += Token(TokenKind.IntLiteral, raw, Span(start, end, line0, col0), intValue = v)
         }
     }
 
@@ -147,9 +132,9 @@ class Lexer(
         val value = when(c) {
             '\\' -> {
                 val esc = advanceOrError("Unterminated escape in char", line0, col0)
-                when(esc) {
+                when (esc) {
                     '\'' -> '\''
-                    '\\'-> '\\'
+                    '\\' -> '\\'
                     'n' -> '\n'
                     't' -> '\t'
                     'r' -> '\r'
@@ -166,7 +151,7 @@ class Lexer(
         val end = i
         val raw = source.substring(start, end)
 
-        tokens += Token(TokenKind.CharLiteral, raw, Span(start, end, line0, col0), charValue = value)
+        tokens += Token(TokenKind.CharLiteral, raw, Span(start, end, line0, col0), charValue = value.code)
     }
 
     private fun lexSymbolOrError(c: Char, start: Int, line0: Int, col0: Int) {

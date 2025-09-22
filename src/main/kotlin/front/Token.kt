@@ -43,6 +43,6 @@ data class Token(
     val span: Span,
     val intValue: Long? = null,
     val floatValue: Double? = null,
-    val charValue: Char? = null,
+    val charValue: Int? = null,
     val stringValue: String? = null
 )
