@@ -69,22 +69,38 @@ class Lexer(
     }
 
     private fun lexNumber(start: Int, line0: Int, col0: Int) {
-        while(isDigit(peek())) advance()
+        val sb = StringBuilder()
+        while(true) {
+            val c = peek()
+            when {
+                isDigit(c) -> sb.append(advance())
+                c == '_' -> advance()
+                else -> break
+            }
+        }
 
         var isFloat = false
         if(peek() == '.' && isDigit(peek(1))) {
             isFloat = true
-            advance()
-            while(isDigit(peek())) advance()
+            sb.append(advance())
+            while(true) {
+                val c = peek()
+                when {
+                    isDigit(c) -> sb.append(advance())
+                    c == '_' -> advance()
+                    else -> break
+                }
+            }
         }
 
         val end = i
         val text = source.substring(start, end)
+        val cleanText = sb.toString()
         if(isFloat) {
-            val v = text.toDouble()
+            val v = cleanText.toDouble()
             tokens += Token(TokenKind.FloatLiteral, text, Span(start, end, line0, col0), floatValue = v)
         } else {
-            val v = text.toLong()
+            val v = cleanText.toLong()
             tokens += Token(TokenKind.IntLiteral, text, Span(start, end, line0, col0), intValue = v)
         }
     }
