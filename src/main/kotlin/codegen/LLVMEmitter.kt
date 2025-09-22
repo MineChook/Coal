@@ -18,6 +18,7 @@ class LLVMEmitter {
         globals.clear()
         fns.clear()
         strNames.clear()
+        declaredDbg.clear()
         tmp = 0
 
         moduleHeader.appendLine("; ModuleID = \"coal-module\"")
@@ -35,7 +36,7 @@ class LLVMEmitter {
             for((content, gname) in strNames) {
                 val encoded = encodeCString(content)
                 val nBytes = encoded.length + 1
-                globals.appendLine("$gname = private unnamed_addr constant [$nBytes x i8] c\"encoded\\00\"")
+                globals.appendLine("$gname = private unnamed_addr constant [$nBytes x i8] c\"$encoded\\00\"")
             }
 
             globals.appendLine()
@@ -53,37 +54,32 @@ class LLVMEmitter {
         fns.appendLine("define i32 $fname() {")
         fns.appendLine("entry:")
 
-        val localEpilogue = StringBuilder()
-        val dbgGlobalsNeeded = mutableListOf<Pair<String, String>>()
-
         for(s in fn.body.stmts) {
             when(s) {
                 is VarDecl -> {
-                    val type = (s.annotedType ?: inferType(s.init!!)) as NamedType
-                    val llTy = llTypeOf(type)
+                    val t = (s.annotedType ?: inferType(s.init!!)) as NamedType
+                    val llTy = llTypeOf(t)
                     val vreg = "%${s.name}"
+
                     fns.appendLine("  $vreg = alloca $llTy")
 
-                    val initC = constOf(s.init!!)
-                    when(initC) {
+                    when(val c = constOf(s.init!!)) {
                         is Const.Immediate -> {
-                            fns.appendLine("  store ${initC.ty} ${initC.text}, ${llTy}* $vreg")
+                            fns.appendLine("  store ${c.ty} ${c.text}, ${llTy}* $vreg")
                         }
 
                         is Const.StringStruct -> {
-
-                            val lit = "{ ${initC.ptrTy} ${initC.ptrExpr}, i32 ${initC.len} }"
+                            val lit = "{ ${c.ptrTy} ${c.ptrExpr}, i32 ${c.len} }"
                             fns.appendLine("  store $llTy $lit, ${llTy}* $vreg")
                         }
                     }
 
                     val dbgName = "__dbg_${fn.name}_${s.name}"
                     ensureDbgGlobal(dbgName, llTy)
-                    dbgGlobalsNeeded += dbgName to llTy
 
-                    val t = nextTmp()
-                    fns.appendLine("  $t = load $llTy, ${llTy}* $vreg")
-                    fns.appendLine("  store $llTy $t, ${llTy}* @${dbgName}")
+                    val tmpv = nextTmp()
+                    fns.appendLine("  $tmpv = load $llTy, ${llTy}* $vreg")
+                    fns.appendLine("  store $llTy $tmpv, ${llTy}* @${dbgName}")
                     fns.appendLine()
                 }
             }
@@ -113,14 +109,14 @@ class LLVMEmitter {
     }
 
     private sealed interface Const {
-        data class Immediate(val ty: String, val text: String): Const
-        data class StringStruct(val ptrTy: String, val ptrExpr: String, val len: Int): Const
+        data class Immediate(val ty: String, val text: String) : Const
+        data class StringStruct(val ptrTy: String, val ptrExpr: String, val len: Int) : Const
     }
 
-    private fun constOf(e: Expr): Const = when(e) {
+    private fun constOf(e: Expr): Const = when (e) {
         is IntLit -> Const.Immediate("i32", e.value.toString())
         is FloatLit -> Const.Immediate("double", e.value.toString())
-        is BoolLit -> Const.Immediate("i1", if(e.value) "1" else "0")
+        is BoolLit -> Const.Immediate("i1", if (e.value) "1" else "0")
         is CharLit -> Const.Immediate("i8", e.value.toString())
         is StringLit -> {
             val (ptrTy, gep, len) = stringPtrExpr(e.value)
@@ -135,7 +131,7 @@ class LLVMEmitter {
         val enc = encodeCString(content)
         val nBytes = enc.length + 1
         val gep = "getelementptr inbounds ([$nBytes x i8], [$nBytes x i8]* $gname, i32 0, i32 0)"
-        return Triple("i8*", gep, content.length)
+        return Triple("i8*", gep, enc.length)
     }
 
     private fun encodeCString(s: String): String {
@@ -149,26 +145,21 @@ class LLVMEmitter {
                 '\t' -> sb.append("\\09")
                 else -> {
                     val code = ch.code
-                    if(code in 32..126) {
-                        sb.append(ch)
-                    } else {
-                        sb.append("\\" + code.toString(16).uppercase().padStart(2, '0'))
-                    }
+                    if(code in 32..126) sb.append(ch)
+                    else sb.append("\\" + code.toString(16).uppercase().padStart(2, '0'))
                 }
             }
         }
-
         return sb.toString()
     }
 
     private fun ensureDbgGlobal(name: String, llTy: String) {
-        if(!declaredDbg.contains(name)) {
-            globals.appendLine("@name = global $llTy ${zeroInit(llTy)}")
-            declaredDbg.add(name)
+        if(declaredDbg.add(name)) {
+            globals.appendLine("@$name = global $llTy ${zeroInit(llTy)}")
         }
     }
 
-    private fun zeroInit(llTy: String): String = when(llTy) {
+    private fun zeroInit(llTy: String): String = when (llTy) {
         "i1" -> "0"
         "i8" -> "0"
         "i32" -> "0"
