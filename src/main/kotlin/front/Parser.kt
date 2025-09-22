@@ -86,9 +86,21 @@ class Parser(
 
     private fun parseAssignStmt(): Stmt {
         val name = consumeIdent("expected identifier")
+        val opToken = peek()
+
+        val isPlusEq = check(TokenKind.PlusEqual)
+        if(isPlusEq) {
+            advance()
+            val rhs = parseExpr()
+            if(name in constVars) {
+                errorHere("cannot assign to const variable '$name'")
+            }
+
+            return Assign(name, Binary(BinOp.Add, Ident(name), rhs))
+        }
+
         consume(TokenKind.Equal, "expected '=' in assignment")
         val value = parseExpr()
-
         if(name in constVars) {
             errorHere("cannot assign to const variable '$name'")
         }
@@ -116,45 +128,57 @@ class Parser(
         is BoolLit -> NamedType("bool")
         is CharLit -> NamedType("char")
         is StringLit -> NamedType("string")
+        is Binary -> {
+            val leftTy = inferType(expr.left)
+            val rightTy = inferType(expr.right)
+            if(leftTy != rightTy) {
+                errorHere("type mismatch in binary expression: '${leftTy}' vs '${rightTy}'")
+            }
+            leftTy
+        }
         is Ident -> errorHere("cannot infer type of identifier '${expr.name}' without context")
     }
 
-    private fun parseExpr(): Expr {
+    private fun parseExpr(): Expr = parseBinaryExpr(0)
+
+    private fun parseBinaryExpr(minPrec: Int): Expr {
+        var lhs = parsePrimary()
+        while(true) {
+            val tok = peek()
+            val prec = precedenceOf(tok.kind)
+            if(prec < minPrec) break
+
+            val opTok = advance()
+            var rhs = parsePrimary()
+
+            while(true) {
+                val nextPrec = precedenceOf(peek().kind)
+                if(nextPrec > prec) {
+                    rhs = parseBinaryExpr(nextPrec)
+                } else break
+            }
+
+            lhs = Binary(binOpOf(opTok.kind), lhs, rhs)
+        }
+
+        return lhs
+    }
+
+    private fun parsePrimary(): Expr {
         val t = peek()
-        return when(t.kind) {
-            is TokenKind.IntLiteral -> {
+        return when (t.kind) {
+            is TokenKind.IntLiteral -> { advance(); IntLit(t.intValue!!) }
+            is TokenKind.FloatLiteral -> { advance(); FloatLit(t.floatValue!!) }
+            is TokenKind.True -> { advance(); BoolLit(true) }
+            is TokenKind.False -> { advance(); BoolLit(false) }
+            is TokenKind.CharLiteral -> { advance(); CharLit(t.charValue!!) }
+            is TokenKind.StringLiteral -> { advance(); StringLit(t.stringValue!!) }
+            is TokenKind.Identifier -> { advance(); Ident(t.lexeme) }
+            is TokenKind.LParen -> {
                 advance()
-                IntLit(t.intValue!!)
-            }
-
-            is TokenKind.FloatLiteral -> {
-                advance()
-                FloatLit(t.floatValue!!)
-            }
-
-            is TokenKind.True -> {
-                advance()
-                BoolLit(true)
-            }
-
-            is TokenKind.False -> {
-                advance()
-                BoolLit(false)
-            }
-
-            is TokenKind.CharLiteral -> {
-                advance()
-                CharLit(t.charValue!!)
-            }
-
-            is TokenKind.StringLiteral -> {
-                advance()
-                StringLit(t.stringValue!!)
-            }
-
-            is TokenKind.Identifier -> {
-                advance()
-                Ident(t.lexeme)
+                val e = parseExpr()
+                consume(TokenKind.RParen, "expected ')'")
+                e
             }
 
             else -> errorHere("expected expression")
@@ -189,5 +213,20 @@ class Parser(
         val token = peek()
         val where = "$fileName:${token.span.line}:${token.span.col}"
         throw RuntimeException("$where: $message (found '${token.kind}')")
+    }
+
+    private fun precedenceOf(kind: TokenKind): Int = when(kind) {
+        is TokenKind.Star, is TokenKind.Slash, is TokenKind.Percent -> 60
+        is TokenKind.Plus, is TokenKind.Minus -> 50
+        else -> -1
+    }
+
+    private fun binOpOf(kind: TokenKind): BinOp = when(kind) {
+        is TokenKind.Plus -> BinOp.Add
+        is TokenKind.Minus -> BinOp.Sub
+        is TokenKind.Star -> BinOp.Mul
+        is TokenKind.Slash -> BinOp.Div
+        is TokenKind.Percent -> BinOp.Mod
+        else -> errorHere("invalid binary operator: '$kind'")
     }
 }

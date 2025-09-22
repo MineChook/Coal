@@ -124,6 +124,7 @@ class LLVMEmitter {
         is FloatLit -> RValue.Immediate("double", e.value.toString())
         is BoolLit -> RValue.Immediate("i1", if (e.value) "1" else "0")
         is CharLit -> RValue.Immediate("i8", e.value.toString())
+        is Binary -> lowerBinary(e)
         is StringLit -> {
             val (ptrTy, gep, len) = stringPtrExpr(e.value)
             RValue.Aggregate("{ $ptrTy $gep, i32 $len }")
@@ -159,6 +160,15 @@ class LLVMEmitter {
             } else {
                 error("cannot infer type of identifier '${expr.name}' without context")
             }
+        }
+
+        is Binary -> {
+            val lt = inferType(expr.left) as NamedType
+            val rt = inferType(expr.right) as NamedType
+            if(lt != rt) error("type mismatch in binary expression: $lt vs $rt")
+            if(lt.name != "int" && lt.name != "float") error("unsupported operand type for binary expression: ${lt.name}")
+
+            lt
         }
     }
 
@@ -224,6 +234,48 @@ class LLVMEmitter {
         "double" -> "0.0"
         "{ i8*, i32 }" -> "{ i8* null, i32 0 }"
         else -> error("cannot zero-initialize type: $llTy")
+    }
+
+    private fun lowerBinary(b: Binary): RValue {
+        val ty = (inferType(b) as NamedType).name
+        val llTy = if(ty == "int") "i32" else "double"
+
+        val lhs = valueOfExpr(b.left, llTy)
+        val rhs = valueOfExpr(b.right, llTy)
+
+        fun opnd(rv: RValue): String = when(rv) {
+            is RValue.Immediate -> rv.text
+            is RValue.ValueReg -> rv.reg
+            is RValue.Aggregate -> error("unexpected aggregate in binary expression")
+        }
+
+        val ltext = opnd(lhs)
+        val rtext = opnd(rhs)
+        val res = nextTmp()
+        when(b.op) {
+            BinOp.Add -> {
+                if(llTy == "i32") fns.appendLine("  $res = add i32 $ltext, $rtext")
+                else fns.appendLine("  $res = fadd double $ltext, $rtext")
+            }
+            BinOp.Sub -> {
+                if(llTy == "i32") fns.appendLine("  $res = sub i32 $ltext, $rtext")
+                else fns.appendLine("  $res = fsub double $ltext, $rtext")
+            }
+            BinOp.Mul -> {
+                if(llTy == "i32") fns.appendLine("  $res = mul i32 $ltext, $rtext")
+                else fns.appendLine("  $res = fmul double $ltext, $rtext")
+            }
+            BinOp.Div -> {
+                if(llTy == "i32") fns.appendLine("  $res = sdiv i32 $ltext, $rtext") // signed for now
+                else fns.appendLine("  $res = fdiv double $ltext, $rtext")
+            }
+            BinOp.Mod -> {
+                if(llTy != "i32") error("modulo '%' only supported for int for now")
+                fns.appendLine("  $res = srem i32 $ltext, $rtext")
+            }
+        }
+
+        return RValue.ValueReg(llTy, res)
     }
 
     private fun mangle(name: String): String = name

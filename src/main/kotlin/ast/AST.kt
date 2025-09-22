@@ -29,6 +29,15 @@ import kotlinx.serialization.Serializable
 ) : Stmt
 
 @Serializable sealed interface Expr
+
+@Serializable data class Binary(
+    val op: BinOp,
+    val left: Expr,
+    val right: Expr
+) : Expr
+
+@Serializable enum class BinOp { Add, Sub, Mul, Div, Mod }
+
 @Serializable data class Ident(val name: String) : Expr
 @Serializable data class IntLit(val value: Long) : Expr
 @Serializable data class FloatLit(val value: Double) : Expr

@@ -30,6 +30,12 @@ sealed class TokenKind {
     data object Equal : TokenKind()
     data object Dot : TokenKind()
     data object DotDot : TokenKind()
+    data object Plus : TokenKind()
+    data object Minus : TokenKind()
+    data object Star : TokenKind()
+    data object Slash : TokenKind()
+    data object Percent : TokenKind()
+    data object PlusEqual : TokenKind()
 
     // END
     data object EOF : TokenKind()

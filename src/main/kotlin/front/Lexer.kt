@@ -163,6 +163,18 @@ class Lexer(
             '}' -> add(TokenKind.RBrace, start, line0, col0)
             ':' -> add(TokenKind.Colon, start, line0, col0)
             ',' -> add(TokenKind.Comma, start, line0, col0)
+            '+' -> {
+                if(peek() == '=') {
+                    advance()
+                    add(TokenKind.PlusEqual, start, line0, col0)
+                } else {
+                    add(TokenKind.Plus, start, line0, col0)
+                }
+            }
+            '-' -> add(TokenKind.Minus, start, line0, col0)
+            '*' -> add(TokenKind.Star, start, line0, col0)
+            '/' -> add(TokenKind.Slash, start, line0, col0)
+            '%' -> add(TokenKind.Percent, start, line0, col0)
             '=' -> add(TokenKind.Equal, start, line0, col0)
             ';' -> { /* ignore semicolons */ }
             '.' -> {
