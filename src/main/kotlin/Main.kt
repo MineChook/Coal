@@ -1,4 +1,5 @@
 import cli.CLIArguments.parseArgs
+import front.Lexer
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.system.exitProcess
@@ -14,7 +15,20 @@ fun main(argv: Array<String>) {
     }
 
     try {
-        println("Compiling ${path.toAbsolutePath()}..")
+        val tokens = Lexer(source, path.fileName.toString()).lex()
+        if(args.emitTokens) {
+            println("TOKENS (" + tokens.size + "):")
+            for(token in tokens) {
+                val pos = "${token.span.line}:${token.span.col}"
+                val kind = token.kind.toString()
+                val lex = token.lexeme.replace("\n", "\\n").replace("\t", "\\t")
+                println("  $pos\t$kind\t'$lex'")
+            }
+
+            return
+        }
+
+        println("Lexed ${tokens.size} tokens successfully")
     } catch(e: RuntimeException) {
         System.err.println(e.message)
         exitProcess(2)
