@@ -2,11 +2,12 @@ package cli
 
 import kotlin.system.exitProcess
 
-data class Args(val input: String?, val emitTokens: Boolean)
+data class Args(val input: String?, val emitTokens: Boolean, val emitJsonTokens: Boolean)
 object CLIArguments {
     fun parseArgs(argv: Array<String>): Args {
         var input: String? = null
         var emitTokens = false
+        var emitJsonTokens = false
 
         var i = 0
         while(i < argv.size) {
@@ -17,6 +18,8 @@ object CLIArguments {
                 }
 
                 "--emit-tokens" -> emitTokens = true
+                "--emit-json-tokens" -> emitJsonTokens = true
+
                 "--help", "-h" -> {
                     printUsageAndExit(0)
                 }
@@ -34,7 +37,7 @@ object CLIArguments {
             printUsageAndExit(1)
         }
 
-        return Args(input, emitTokens)
+        return Args(input, emitTokens, emitJsonTokens)
     }
 
     private fun printUsageAndExit(code: Int) {
@@ -42,6 +45,7 @@ object CLIArguments {
         println("Options:")
         println("  --input, -i <file>       Specify input file")
         println("  --emit-tokens            Emit tokens")
+        println("  --emit-json-tokens       Dump tokens as JSON")
         println("  --help, -h               Show this help message")
 
         exitProcess(code)

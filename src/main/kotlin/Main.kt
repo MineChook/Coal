@@ -28,6 +28,25 @@ fun main(argv: Array<String>) {
             return
         }
 
+        if(args.emitJsonTokens) {
+            val json = buildString {
+                append("[\n")
+                tokens.forEachIndexed { i, token ->
+                    val pos = "${token.span.line}:${token.span.col}"
+                    val kind = token.kind.toString()
+                    val lex = token.lexeme.replace("\n", "\\n").replace("\t", "\\t").replace("\"", "\\\"")
+                    append("  { \"pos\": \"$pos\", \"kind\": \"$kind\", \"lexeme\": \"$lex\" }")
+                    if(i < tokens.size - 1) append(",")
+                    append("\n")
+                }
+
+                append("]\n")
+            }
+
+            println(json)
+            return
+        }
+
         println("Lexed ${tokens.size} tokens successfully")
     } catch(e: RuntimeException) {
         System.err.println(e.message)
