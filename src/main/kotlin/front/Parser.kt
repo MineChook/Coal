@@ -39,29 +39,47 @@ class Parser(
     }
 
     private fun parseStmt(): Stmt {
-        return parseVarDecl()
+        return if(check(TokenKind.Var)) {
+            parseVarDecl()
+        } else {
+            parseAssignStmt()
+        }
     }
 
     private fun parseVarDecl(): VarDecl {
         consume(TokenKind.Var, "expected 'var'")
         val name = consumeIdent("expected variable name")
 
-        var annoted: TypeRef? = null
+        var annotated: TypeRef? = null
         if(match(TokenKind.Colon)) {
-            annoted = parseTypeRef()
+            annotated = parseTypeRef()
         }
 
-        consume(TokenKind.Equal, "expected '=' in variable declaration")
-        val init = parseExpr()
+        var init: Expr? = null
+        if(match(TokenKind.Equal)) {
+            init = parseExpr()
+        }
 
-        if(annoted != null) {
-            val initType = inferType(init)
-            if(annoted != initType) {
-                errorHere("type mismatch: variable '$name' annotated as '$annoted' but initialized with '$initType'")
+        if(init == null && annotated == null) {
+            errorHere("variable '$name' needs a type if not initialized")
+        }
+
+        if(init != null && annotated != null) {
+            val initTy = inferType(init)
+            if(annotated != initTy) {
+                errorHere("type mismatch: cannot assign '${initTy}' to variable '$name' of type '${annotated}'")
             }
         }
 
-        return VarDecl(name, annoted, init)
+        return VarDecl(name, annotated, init)
+    }
+
+    private fun parseAssignStmt(): Stmt {
+        val name = consumeIdent("expected identifier")
+        consume(TokenKind.Equal, "expected '=' in assignment")
+        val value = parseExpr()
+
+        return Assign(name, value)
     }
 
     private fun parseTypeRef(): TypeRef {

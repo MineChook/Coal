@@ -68,15 +68,20 @@ fun main(argv: Array<String>) {
         }
 
         val ir = LLVMEmitter().emit(program)
-        val tmpLL = createTempFile("coal-", ".ll")
-        Files.writeString(tmpLL, ir)
-
         val outPath = computeOutputBinaryPath(args, inputPath)
+        val llPath =
+            if(args.keepLL) {
+                withExtension(outPath, "ll")
+            } else {
+                createTempFile("coal-", ".ll")
+            }
+
+        Files.writeString(llPath, ir)
         val cc = pickCompiler(args.cc)
         val cmd = if(cc == "clang") {
-            listOf("clang", tmpLL.toString(), "-o", outPath.toString())
+            listOf("clang", llPath.toString(), "-o", outPath.toString())
         } else {
-            listOf("clang", tmpLL.toString(), "-o", outPath.toString())
+            listOf("clang", llPath.toString(), "-o", outPath.toString())
         }
 
         val pb = ProcessBuilder(cmd).redirectErrorStream(true)
@@ -86,11 +91,11 @@ fun main(argv: Array<String>) {
 
         if(code != 0) {
             System.err.println("Build failed (exit $code): Compiler output:\n$out")
-            if(!args.keepLL) tmpLL.deleteIfExists()
+            if(!args.keepLL) llPath.deleteIfExists()
             exitProcess(code)
         }
 
-        if(!args.keepLL) tmpLL.deleteIfExists()
+        if(!args.keepLL) llPath.deleteIfExists()
         println("Build succeeded: ${outPath.toAbsolutePath()}")
     } catch(e: RuntimeException) {
         System.err.println(e.message)
@@ -111,4 +116,10 @@ private fun computeOutputBinaryPath(args: Args, inputPath: Path): Path {
 
 private fun pickCompiler(ccArg: String?): String {
     return ccArg ?: "clang"
+}
+
+private fun withExtension(p: Path, newExtNoDot: String): Path {
+    val name = p.fileName.toString()
+    val base = name.substringBeforeLast('.', name)
+    return p.resolveSibling("$base.$newExtNoDot")
 }

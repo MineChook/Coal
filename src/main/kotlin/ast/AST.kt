@@ -18,8 +18,13 @@ import kotlinx.serialization.Serializable
 @Serializable sealed interface Stmt
 @Serializable data class VarDecl(
     val name: String,
-    val annotedType: TypeRef?,
+    val annotatedType: TypeRef?,
     val init: Expr?
+) : Stmt
+
+@Serializable data class Assign(
+    val name: String,
+    val value: Expr
 ) : Stmt
 
 @Serializable sealed interface Expr
