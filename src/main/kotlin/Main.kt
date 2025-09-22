@@ -1,5 +1,6 @@
 import ast.Program
 import cli.CLIArguments.parseArgs
+import codegen.LLVMEmitter
 import front.Lexer
 import front.Parser
 import kotlinx.serialization.json.Json
@@ -54,6 +55,12 @@ fun main(argv: Array<String>) {
         if(args.emitAst) {
             val json = Json { prettyPrint = true; classDiscriminator = "kind" }
             println(json.encodeToString(Program.serializer(), program))
+            return
+        }
+
+        if(args.emitIR) {
+            val ir = LLVMEmitter().emit(program)
+            println(ir)
             return
         }
 

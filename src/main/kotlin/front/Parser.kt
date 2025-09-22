@@ -78,6 +78,15 @@ class Parser(
         return NamedType(t)
     }
 
+    private fun inferType(expr: Expr): TypeRef = when(expr) {
+        is IntLit -> NamedType("int")
+        is FloatLit -> NamedType("float")
+        is BoolLit -> NamedType("bool")
+        is CharLit -> NamedType("char")
+        is StringLit -> NamedType("string")
+        is Ident -> errorHere("cannot infer type of identifier '${expr.name}' without context")
+    }
+
     private fun parseExpr(): Expr {
         val t = peek()
         return when(t.kind) {
@@ -143,15 +152,6 @@ class Parser(
     private fun check(kind: TokenKind): Boolean = peek().kind::class == kind::class
     private fun peek(): Token = tokens[i]
     private fun advance(): Token = tokens[i++]
-
-    private fun inferType(expr: Expr): TypeRef = when(expr) {
-        is IntLit -> NamedType("int")
-        is FloatLit -> NamedType("float")
-        is BoolLit -> NamedType("bool")
-        is CharLit -> NamedType("char")
-        is StringLit -> NamedType("string")
-        is Ident -> errorHere("cannot infer type of identifier '${expr.name}' without context")
-    }
 
     private fun errorHere(message: String): Nothing {
         val token = peek()

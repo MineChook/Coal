@@ -6,7 +6,8 @@ data class Args(
     val input: String?,
     val emitTokens: Boolean,
     val emitJsonTokens: Boolean,
-    val emitAst: Boolean
+    val emitAst: Boolean,
+    val emitIR: Boolean
 )
 
 object CLIArguments {
@@ -15,6 +16,7 @@ object CLIArguments {
         var emitTokens = false
         var emitJsonTokens = false
         var emitAst = false
+        var emitIR = false
 
         var i = 0
         while(i < argv.size) {
@@ -27,6 +29,7 @@ object CLIArguments {
                 "--emit-tokens" -> emitTokens = true
                 "--emit-json-tokens" -> emitJsonTokens = true
                 "--emit-ast" -> emitAst = true
+                "--emit-ir" -> emitIR = true
 
                 "--help", "-h" -> {
                     printUsageAndExit(0)
@@ -45,7 +48,7 @@ object CLIArguments {
             printUsageAndExit(1)
         }
 
-        return Args(input, emitTokens, emitJsonTokens, emitAst)
+        return Args(input, emitTokens, emitJsonTokens, emitAst, emitIR)
     }
 
     private fun printUsageAndExit(code: Int) {
@@ -55,6 +58,7 @@ object CLIArguments {
         println("  --emit-tokens            Emit tokens")
         println("  --emit-json-tokens       Dump tokens as JSON")
         println("  --emit-ast               Emit AST as JSON")
+        println("  --emit-ir                Emit IR as JSON")
         println("  --help, -h               Show this help message")
 
         exitProcess(code)
