@@ -10,7 +10,9 @@ data class Args(
     val emitTokens: Boolean,
     val emitJsonTokens: Boolean,
     val emitAst: Boolean,
-    val emitIR: Boolean
+    val emitIR: Boolean,
+    val keepLL: Boolean,
+    val cc: String?
 )
 
 object CLIArguments {
@@ -21,6 +23,8 @@ object CLIArguments {
         var emitJsonTokens = false
         var emitAst = false
         var emitIR = false
+        var keepLL = false
+        var cc: String? = null
 
         var i = 0
         while(i < argv.size) {
@@ -35,10 +39,16 @@ object CLIArguments {
                     output = argv[++i]
                 }
 
+                "--cc" -> {
+                    if(i + 1 >= argv.size) error("Missing argument for $a")
+                    cc = argv[++i]
+                }
+
                 "--emit-tokens" -> emitTokens = true
                 "--emit-json-tokens" -> emitJsonTokens = true
                 "--emit-ast" -> emitAst = true
                 "--emit-ir" -> emitIR = true
+                "--keep-ll" -> keepLL = true
 
                 "--help", "-h" -> {
                     printUsageAndExit(0)
@@ -57,7 +67,7 @@ object CLIArguments {
             printUsageAndExit(1)
         }
 
-        return Args(input, output, emitTokens, emitJsonTokens, emitAst, emitIR)
+        return Args(input, output, emitTokens, emitJsonTokens, emitAst, emitIR, keepLL, cc)
     }
 
     private fun printUsageAndExit(code: Int) {
@@ -65,10 +75,12 @@ object CLIArguments {
         println("Options:")
         println("  --input, -i <file>       Specify input file")
         println("  --output, -o <file>      Specify output file")
+        println("  --cc <compiler>          Choose compiler driver (default: clang)")
         println("  --emit-tokens            Emit tokens")
         println("  --emit-json-tokens       Dump tokens as JSON")
         println("  --emit-ast               Emit AST as JSON")
         println("  --emit-ir                Emit IR as JSON")
+        println("  --keep-ll                Keep the intermediate .ll file when compiling")
         println("  --help, -h               Show this help message")
 
         exitProcess(code)
