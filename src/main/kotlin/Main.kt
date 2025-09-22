@@ -64,7 +64,15 @@ fun main(argv: Array<String>) {
             return
         }
 
-        println("Parsed successfully: ${path.toAbsolutePath()}")
+        if(args.output != null) {
+            val ir = LLVMEmitter().emit(program)
+            try {
+                Files.writeString(Path.of(args.output), ir)
+            } catch(e: Exception) {
+                System.err.println("Error writing to file ${args.output}: ${e.message}")
+                exitProcess(2)
+            }
+        }
     } catch(e: RuntimeException) {
         System.err.println(e.message)
         exitProcess(2)
