@@ -1,0 +1,34 @@
+package ast
+
+import kotlinx.serialization.Serializable
+
+@Serializable data class Program(val decls: List<Decl>)
+
+@Serializable sealed interface Decl
+@Serializable data class FnDecl(
+    val name: String,
+    val params: List<Param>,
+    val returnType: TypeRef?,
+    val body: Block
+) : Decl
+
+@Serializable data class Param(val name: String, val type: TypeRef)
+@Serializable data class Block(val stmts: List<Stmt>)
+
+@Serializable sealed interface Stmt
+@Serializable data class VarDecl(
+    val name: String,
+    val annotedType: TypeRef?,
+    val init: Expr?
+) : Stmt
+
+@Serializable sealed interface Expr
+@Serializable data class Ident(val name: String) : Expr
+@Serializable data class IntLit(val value: Long) : Expr
+@Serializable data class FloatLit(val value: Double) : Expr
+@Serializable data class BoolLit(val value: Boolean) : Expr
+@Serializable data class CharLit(val value: Int) : Expr
+@Serializable data class StringLit(val value: String) : Expr
+
+@Serializable sealed interface TypeRef
+@Serializable data class NamedType(val name: String) : TypeRef
