@@ -7,6 +7,7 @@ class Parser(
     private val fileName: String = "<stdin>"
 ) {
     private var i = 0
+    private val constVars = mutableSetOf<String>()
 
     fun parseProgram(): Program {
         val decls = mutableListOf<Decl>()
@@ -39,7 +40,7 @@ class Parser(
     }
 
     private fun parseStmt(): Stmt {
-        return if(check(TokenKind.Var)) {
+        return if(check(TokenKind.Var) || check(TokenKind.Const)) {
             parseVarDecl()
         } else {
             parseAssignStmt()
@@ -47,7 +48,11 @@ class Parser(
     }
 
     private fun parseVarDecl(): VarDecl {
-        consume(TokenKind.Var, "expected 'var'")
+        val isConst = match(TokenKind.Const)
+        if(!isConst) {
+            consume(TokenKind.Var, "expected 'var' or 'const'")
+        }
+
         val name = consumeIdent("expected variable name")
 
         var annotated: TypeRef? = null
@@ -58,6 +63,10 @@ class Parser(
         var init: Expr? = null
         if(match(TokenKind.Equal)) {
             init = parseExpr()
+        }
+
+        if(isConst && init == null) {
+            errorHere("const variable '$name' must be initialized")
         }
 
         if(init == null && annotated == null) {
@@ -71,13 +80,18 @@ class Parser(
             }
         }
 
-        return VarDecl(name, annotated, init)
+        if(isConst) constVars.add(name)
+        return VarDecl(name, annotated, init, isConst)
     }
 
     private fun parseAssignStmt(): Stmt {
         val name = consumeIdent("expected identifier")
         consume(TokenKind.Equal, "expected '=' in assignment")
         val value = parseExpr()
+
+        if(name in constVars) {
+            errorHere("cannot assign to const variable '$name'")
+        }
 
         return Assign(name, value)
     }

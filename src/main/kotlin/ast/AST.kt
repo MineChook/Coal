@@ -19,7 +19,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class VarDecl(
     val name: String,
     val annotatedType: TypeRef?,
-    val init: Expr?
+    val init: Expr?,
+    val isConst: Boolean
 ) : Stmt
 
 @Serializable data class Assign(

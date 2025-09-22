@@ -1,5 +1,6 @@
 fn main() {
-    var a = 4
+    const a = 4
+    a = 5
     var b: int
     b = a
 }

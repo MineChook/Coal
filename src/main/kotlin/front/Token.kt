@@ -4,6 +4,7 @@ sealed class TokenKind {
     // KEYWORDS
     data object Fn : TokenKind()
     data object Var : TokenKind()
+    data object Const : TokenKind()
     data object True : TokenKind()
     data object False : TokenKind()
     data object KwInt : TokenKind()

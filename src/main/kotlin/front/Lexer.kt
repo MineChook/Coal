@@ -12,6 +12,7 @@ class Lexer(
     private val keywords = mapOf(
         "fn" to TokenKind.Fn,
         "var" to TokenKind.Var,
+        "const" to TokenKind.Const,
         "true" to TokenKind.True,
         "false" to TokenKind.False,
         "int" to TokenKind.KwInt,
