@@ -162,6 +162,7 @@ class Lexer(
             ':' -> add(TokenKind.Colon, start, line0, col0)
             ',' -> add(TokenKind.Comma, start, line0, col0)
             '=' -> add(TokenKind.Equal, start, line0, col0)
+            ';' -> { /* ignore semicolons */ }
             '.' -> {
                 if(peek() == '.') {
                     advance()
