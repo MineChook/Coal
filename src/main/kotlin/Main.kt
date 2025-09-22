@@ -21,6 +21,8 @@ fun main(argv: Array<String>) {
         return
     }
 
+    val startTime = System.currentTimeMillis()
+
     try {
         val tokens = Lexer(source, inputPath.fileName.toString()).lex()
         if(args.emitTokens) {
@@ -96,7 +98,10 @@ fun main(argv: Array<String>) {
         }
 
         if(!args.keepLL) llPath.deleteIfExists()
-        println("Build succeeded: ${outPath.toAbsolutePath()}")
+
+        val endTime = System.currentTimeMillis()
+        val dur = endTime - startTime
+        println("Build successful: ${outPath.toAbsolutePath()} (in ${dur}ms)")
     } catch(e: RuntimeException) {
         System.err.println(e.message)
         exitProcess(2)
