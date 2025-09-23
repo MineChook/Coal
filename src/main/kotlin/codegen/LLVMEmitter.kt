@@ -199,7 +199,7 @@ class LLVMEmitter {
 
         if(arg is RValue.Aggregate) {
             val ptrTy = "i8*"
-            val fmt = if (newline) "%s\\0A" else "%s"
+            val fmt = if(newline) "%s\n" else "%s"
             val (_, gep, _) = stringPtrExpr(fmt)
 
             val tPtr = nextTmp()
