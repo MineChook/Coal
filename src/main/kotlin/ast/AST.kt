@@ -44,6 +44,12 @@ import kotlinx.serialization.Serializable
     val args: List<Expr>
 ) : Expr
 
+@Serializable data class MethodCall(
+    val receiver: Expr,
+    val method: String,
+    val args: List<Expr>
+) : Expr
+
 @Serializable data class Ident(val name: String) : Expr
 @Serializable data class IntLit(val value: Long) : Expr
 @Serializable data class FloatLit(val value: Double) : Expr

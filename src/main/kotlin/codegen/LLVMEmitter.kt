@@ -20,6 +20,7 @@ class LLVMEmitter {
     fun emit(prog: Program): String {
         mod = ModuleBuilder()
         mod.declarePrintf()
+        mod.declareSnprintf()
 
         for(d in prog.decls) {
             when(d) {
@@ -94,9 +95,9 @@ class LLVMEmitter {
         is BoolLit -> RValue.Immediate("i1", if(e.value) "1" else "0")
         is CharLit -> RValue.Immediate("i8", e.value.toString())
         is StringLit -> {
-            val fmt = mod.internCString(e.value)
+            val ref = mod.internCString(e.value)
             val len = utf8Len(e.value)
-            RValue.Aggregate("{ i8* ${fmt.gep}, i32 $len }")
+            RValue.Aggregate("{ ptr ${ref.constGEP}, i32 $len }")
         }
 
         is Ident -> {
@@ -110,6 +111,24 @@ class LLVMEmitter {
             "print" -> lowerBuiltinPrint(b, e.args, false)
             "println" -> lowerBuiltinPrint(b, e.args, true)
             else -> error("Unknown function ${e.callee}")
+        }
+
+        is MethodCall -> lowerMethodCall(b, e)
+    }
+
+    private fun lowerMethodCall(b: BlockBuilder, m: MethodCall): RValue {
+        require(m.args.isEmpty()) { "conversion methods take no arguments" }
+        val recv = valueOfExpr(b, m.receiver)
+
+        return when(m.method) {
+            "toString" -> when(recv) {
+                is RValue.Aggregate -> recv
+                is RValue.Immediate, is RValue.ValueReg -> numberOrCharToString(b, recv)
+            }
+
+            "toInt" -> stringToIntIfLiteral(m.receiver)
+            "toFloat" -> stringToFloatIfLiteral(m.receiver)
+            else -> error("unknown method ${m.method}")
         }
     }
 
@@ -144,10 +163,18 @@ class LLVMEmitter {
         require(args.size == 1) { "print/println takes exactly one argument" }
         val rv = valueOfExpr(b, args[0])
 
-        if(rv is RValue.Aggregate) {
-            val fmtG = mod.internCString(if (newline) "%s\n" else "%s")
-            val ptr = b.extractValue("{ i8*, i32 }", rv.literal, 0)
-            b.callPrintf(fmtG.gep, "i8*" to ptr)
+        fun isStringAggReg(v: RValue) = v is RValue.ValueReg && v.llTy == "{ ptr, i32 }"
+        if(rv is RValue.Aggregate || isStringAggReg(rv)) {
+            val fmtRef = mod.internCString(if (newline) "%s\n" else "%s")
+            val fmtPtr = b.gepGlobalFirst(fmtRef)
+
+            val strPtr = when (rv) {
+                is RValue.Aggregate -> b.extractValue("{ ptr, i32 }", rv.literal, 0)
+                is RValue.ValueReg  -> b.extractValue("{ ptr, i32 }", rv.reg, 0)
+                else -> error("unreachable")
+            }
+
+            b.callPrintf(fmtPtr, "ptr" to strPtr)
             return RValue.Immediate("i32", "0")
         }
 
@@ -159,12 +186,9 @@ class LLVMEmitter {
         }
 
         val fmtG = mod.internCString(fmt)
-        val argTy = when(ty) {
-            "i1", "i8" -> "i32"
-            else -> ty
-        }
+        val argTy = when (ty) { "i1","i8" -> "i32"; else -> ty }
+        b.callPrintf(fmtG.constGEP, argTy to op)
 
-        b.callPrintf(fmtG.gep, argTy to op)
         return RValue.Immediate("i32", "0")
     }
 
@@ -182,7 +206,7 @@ class LLVMEmitter {
                 "double" -> NamedType("float")
                 "i1" -> NamedType("bool")
                 "i8" -> NamedType("char")
-                "{ i8*, i32 }" -> NamedType("string")
+                "{ ptr, i32 }" -> NamedType("string")
                 else -> error("cannot infer from $slot")
             }
         }
@@ -195,23 +219,72 @@ class LLVMEmitter {
             lt
         }
 
-        is Call -> error("cannot infer call type yet")
+        is Call -> NamedType("int")
+        is MethodCall -> when(expr.method) {
+            "toString" -> NamedType("string")
+            "toInt" -> NamedType("int")
+            "toFloat" -> NamedType("float")
+            else -> error("unknown method '${expr.method}'")
+        }
     }
 
-    private fun llTypeOf(t: NamedType): String = when(t.name) {
+    private fun llTypeOf(t: NamedType) = when (t.name) {
         "int" -> "i32"
         "float" -> "double"
         "bool" -> "i1"
         "char" -> "i8"
-        "string" -> "{ i8*, i32 }"
+        "string" -> "{ ptr, i32 }"
         else -> error("unknown type ${t.name}")
     }
 
-    private fun zeroInit(ty: String) = when(ty) {
-        "i1", "i8", "i32" -> "0"
+    private fun zeroInit(ty: String) = when (ty) {
+        "i1","i8","i32" -> "0"
         "double" -> "0.0"
-        "{ i8*, i32 }" -> "{ i8* null, i32 0 }"
+        "{ ptr, i32 }" -> "{ ptr null, i32 0 }"
         else -> error("no zero init for $ty")
+    }
+
+    private fun numberOrCharToString(b: BlockBuilder, rv: RValue): RValue {
+        val (ty, op) = asOperand(rv)
+        val fmt = when(ty) { "i32","i1","i8" -> "%d"; "double" -> "%f"; else -> error("toString() not supported for type $ty") }
+
+        val fmtRef = mod.internCString(fmt)
+        val fmtPtr = b.gepGlobalFirst(fmtRef)
+
+        val buf = b.allocaArray(64, "i8")
+        val bufPtr = b.gepFirst(buf, 64, "i8")
+
+        val written = b.callSnprintf(
+            bufPtr, 64, fmtPtr,
+            when (ty) { "i1","i8" -> "i32" to op; else -> ty to op }
+        )
+
+        val ssa = b.packString(bufPtr, written)
+        return RValue.ValueReg("{ ptr, i32 }", ssa)
+    }
+
+    private fun stringToIntIfLiteral(recv: Expr): RValue {
+        return when(recv) {
+            is StringLit -> {
+                val s = recv.value.trim()
+                val v = s.toLongOrNull() ?: error("cannot convert string '$s' to int")
+                RValue.Immediate("i32", v.toString())
+            }
+
+            else -> error("toInt() supported only on string literals")
+        }
+    }
+
+    private fun stringToFloatIfLiteral(recv: Expr): RValue {
+        return when(recv) {
+            is StringLit -> {
+                val s = recv.value.trim()
+                val v = s.toDoubleOrNull() ?: error("cannot convert string '$s' to float")
+                RValue.Immediate("double", v.toString())
+            }
+
+            else -> error("toFloat() supported only on string literals")
+        }
     }
 
     private fun asOperand(rv: RValue): Pair<String, String> = when(rv) {

@@ -2,16 +2,17 @@ package codegen.ir
 
 class StringTable(private val globals: StringBuilder) {
     private var counter = 0
-    private val interned = LinkedHashMap<String, StringGEP>()
+    private val interned = LinkedHashMap<String, StringRef>()
 
-    fun intern(s: String): StringGEP {
+    fun intern(s: String): StringRef {
         return interned.getOrPut(s) {
             val encoded = encodeCString(s)
             val nBytes = utf8BytesLen(s) + 1
             val gname = "@.str.${counter++}"
             globals.appendLine("$gname = private unnamed_addr constant [$nBytes x i8] c\"$encoded\\00\"")
-            val gep = "getelementptr inbounds ([$nBytes x i8], [$nBytes x i8]* $gname, i32 0, i32 0)"
-            StringGEP(nBytes, gname, gep)
+
+            val constGEP = "getelementptr inbounds ([$nBytes x i8], ptr $gname, i32 0, i32 0)"
+            StringRef(nBytes, gname, constGEP)
         }
     }
 

@@ -16,9 +16,8 @@ class ModuleBuilder(
         header.appendLine("source_filename = \"$sourceName\"")
     }
 
-    fun declarePrintf() {
-        decls.appendLine("declare i32 @printf(i8*, ...)")
-    }
+    fun declarePrintf() { decls.appendLine("declare i32 @printf(ptr, ...)") }
+    fun declareSnprintf() { decls.appendLine("declare i32 @snprintf(ptr, i64, ptr, ...)") }
 
     fun declare(name: String, sig: String) {
         decls.appendLine("declare $sig @$name")
@@ -29,7 +28,7 @@ class ModuleBuilder(
         globals.appendLine("@$name =$at global $llTy $init")
     }
 
-    fun internCString(raw: String): StringGEP = stringTable.intern(raw)
+    fun internCString(raw: String): StringRef = stringTable.intern(raw)
 
     fun function(name: String, retTy: String = "i32", params: List<Pair<String, String>> = emptyList()): FunctionBuilder {
         return FunctionBuilder(this, name, retTy, params)

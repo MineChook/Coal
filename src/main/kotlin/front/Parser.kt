@@ -42,7 +42,10 @@ class Parser(
     private fun parseStmt(): Stmt {
         return when {
             check(TokenKind.Var) || check(TokenKind.Const) -> parseVarDecl()
-            check(TokenKind.Identifier) && (checkNext(TokenKind.Equal) || checkNext(TokenKind.PlusEqual)) -> parseAssignStmt()
+            check(TokenKind.Identifier) -> {
+                if(peekNextIsAssignOp()) parseAssignStmt() else ExprStmt(parseExpr())
+            }
+
             else -> {
                 val e = parseExpr()
                 ExprStmt(e)
@@ -77,8 +80,8 @@ class Parser(
         }
 
         if(init != null && annotated != null) {
-            val initTy = inferType(init)
-            if(annotated != initTy) {
+            val initTy = try { inferType(init) } catch(_: RuntimeException) { null }
+            if(initTy != null && initTy != annotated) {
                 errorHere("type mismatch: cannot assign '${initTy}' to variable '$name' of type '${annotated}'")
             }
         }
@@ -131,6 +134,7 @@ class Parser(
         is BoolLit -> NamedType("bool")
         is CharLit -> NamedType("char")
         is StringLit -> NamedType("string")
+
         is Binary -> {
             val leftTy = inferType(expr.left)
             val rightTy = inferType(expr.right)
@@ -140,21 +144,26 @@ class Parser(
             leftTy
         }
 
-        is Ident -> errorHere("cannot infer type of identifier '${expr.name}' without context")
-        is Call -> errorHere("cannot infer type of call expression without context")
+        is Ident, is Call -> errorHere("cannot infer type of expression")
+        is MethodCall -> when(expr.method) {
+            "toString" -> NamedType("string")
+            "toInt" -> NamedType("int")
+            "toFloat" -> NamedType("float")
+            else -> errorHere("unknown method '${expr.method}'")
+        }
     }
 
     private fun parseExpr(): Expr = parseBinaryExpr(0)
 
     private fun parseBinaryExpr(minPrec: Int): Expr {
-        var lhs = parsePrimary()
+        var lhs = parsePostfix()
         while(true) {
             val tok = peek()
             val prec = precedenceOf(tok.kind)
             if(prec < minPrec) break
 
             val opTok = advance()
-            var rhs = parsePrimary()
+            var rhs = parsePostfix()
 
             while(true) {
                 val nextPrec = precedenceOf(peek().kind)
@@ -167,6 +176,25 @@ class Parser(
         }
 
         return lhs
+    }
+
+    private fun parsePostfix(): Expr {
+        var expr = parsePrimary()
+        while(match(TokenKind.Dot)) {
+            val method = consumeIdent("expected method name after '.'")
+            consume(TokenKind.LParen, "expected '(' after method name")
+            val args = mutableListOf<Expr>()
+            if(!check(TokenKind.RParen)) {
+                do {
+                    args += parseExpr()
+                } while(match(TokenKind.Comma))
+            }
+
+            consume(TokenKind.RParen, "expected ')' after arguments")
+            expr = MethodCall(expr, method, args)
+        }
+
+        return expr
     }
 
     private fun parsePrimary(): Expr {
@@ -251,9 +279,13 @@ class Parser(
         else -> errorHere("invalid binary operator: '$kind'")
     }
 
-    private fun checkNext(kind: TokenKind): Boolean {
-        val j = i + 1
-        if(j >= tokens.size) return false
-        return tokens[j].kind::class == kind::class
+    private fun peekNextIsAssignOp(): Boolean {
+        if(!check(TokenKind.Identifier)) return false
+        val saved = i
+        advance()
+
+        val isAssign = check(TokenKind.Equal) || check(TokenKind.PlusEqual)
+        i = saved
+        return isAssign
     }
 }

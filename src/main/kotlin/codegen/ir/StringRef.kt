@@ -1,7 +1,7 @@
 package codegen.ir
 
-data class StringGEP(
+data class StringRef(
     val arrayBytes: Int,
     val globalName: String,
-    val gep: String
+    val constGEP: String
 )
