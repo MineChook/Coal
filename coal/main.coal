@@ -1,3 +1,10 @@
 fn main() {
     println("Hello world!")
+
+    const a = 5
+    const b = a + 3
+
+    print(a)
+    print(" is a, b is ")
+    print(b)
 }
