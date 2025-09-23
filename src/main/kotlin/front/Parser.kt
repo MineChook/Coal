@@ -40,10 +40,13 @@ class Parser(
     }
 
     private fun parseStmt(): Stmt {
-        return if(check(TokenKind.Var) || check(TokenKind.Const)) {
-            parseVarDecl()
-        } else {
-            parseAssignStmt()
+        return when {
+            check(TokenKind.Var) || check(TokenKind.Const) -> parseVarDecl()
+            check(TokenKind.Identifier) && (checkNext(TokenKind.Equal) || checkNext(TokenKind.PlusEqual)) -> parseAssignStmt()
+            else -> {
+                val e = parseExpr()
+                ExprStmt(e)
+            }
         }
     }
 
@@ -136,7 +139,9 @@ class Parser(
             }
             leftTy
         }
+
         is Ident -> errorHere("cannot infer type of identifier '${expr.name}' without context")
+        is Call -> errorHere("cannot infer type of call expression without context")
     }
 
     private fun parseExpr(): Expr = parseBinaryExpr(0)
@@ -173,7 +178,23 @@ class Parser(
             is TokenKind.False -> { advance(); BoolLit(false) }
             is TokenKind.CharLiteral -> { advance(); CharLit(t.charValue!!) }
             is TokenKind.StringLiteral -> { advance(); StringLit(t.stringValue!!) }
-            is TokenKind.Identifier -> { advance(); Ident(t.lexeme) }
+            is TokenKind.Identifier -> {
+                val name = advance().lexeme
+                if(match(TokenKind.LParen)) {
+                    val args = mutableListOf<Expr>()
+                    if(!check(TokenKind.RParen)) {
+                        do {
+                            args += parseExpr()
+                        } while(match(TokenKind.Comma))
+                    }
+
+                    consume(TokenKind.RParen, "expected ')' after arguments")
+                    Call(name, args)
+                } else {
+                    Ident(name)
+                }
+            }
+
             is TokenKind.LParen -> {
                 advance()
                 val e = parseExpr()
@@ -228,5 +249,11 @@ class Parser(
         is TokenKind.Slash -> BinOp.Div
         is TokenKind.Percent -> BinOp.Mod
         else -> errorHere("invalid binary operator: '$kind'")
+    }
+
+    private fun checkNext(kind: TokenKind): Boolean {
+        val j = i + 1
+        if(j >= tokens.size) return false
+        return tokens[j].kind::class == kind::class
     }
 }

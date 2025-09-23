@@ -33,6 +33,7 @@ class LLVMEmitter {
 
         moduleHeader.appendLine("; ModuleID = \"coal-module\"")
         moduleHeader.appendLine("source_filename = \"coal\"")
+        moduleHeader.appendLine("declare i32 @printf(i8*, ...)")
         moduleHeader.appendLine()
 
         for(d in prog.decls) {
@@ -45,7 +46,7 @@ class LLVMEmitter {
             globals.appendLine("; string constants")
             for((content, gname) in strNames) {
                 val encoded = encodeCString(content)
-                val nBytes = encoded.length + 1
+                val nBytes = utf8BytesLen(content) + 1
                 globals.appendLine("$gname = private unnamed_addr constant [$nBytes x i8] c\"$encoded\\00\"")
             }
 
@@ -71,6 +72,7 @@ class LLVMEmitter {
             when(s) {
                 is VarDecl -> lowerVarDecl(fn, s)
                 is Assign -> lowerAssign(fn, s)
+                is ExprStmt -> valueOfExpr(s.expr)
             }
         }
 
@@ -136,6 +138,14 @@ class LLVMEmitter {
             fns.appendLine("  $t = load ${slot.llTy}, ${slot.llTy}* ${slot.reg}")
             RValue.ValueReg(slot.llTy, t)
         }
+
+        is Call -> {
+            when(e.callee) {
+                "print" -> lowerBuiltinPrint(e.args, false)
+                "println" -> lowerBuiltinPrint(e.args, true)
+                else -> error("unknown function: ${e.callee}")
+            }
+        }
     }
 
     private fun inferType(expr: Expr): TypeRef = when(expr) {
@@ -170,6 +180,8 @@ class LLVMEmitter {
 
             lt
         }
+
+        is Call -> error("cannot infer type of call expression without context")
     }
 
     private fun llTypeOf(t: NamedType): String = when(t.name) {
@@ -181,6 +193,18 @@ class LLVMEmitter {
         else -> error("unknown type: ${t.name}")
     }
 
+    private fun lowerBuiltinPrint(args: List<Expr>, newline: Boolean): RValue {
+        require(args.size == 1) { "print/println requires exactly one argument" }
+        val arg = valueOfExpr(args[0])
+        val (argTy, argOp) = asOperand(arg)
+
+        val fmt = if(newline) "%d\n" else "%d"
+        val (_, gep, _) = stringPtrExpr(fmt)
+
+        fns.appendLine("  call i32 (i8*, ...) @printf(i8* $gep, $argTy $argOp)")
+        return RValue.Immediate("i32", "0")
+    }
+
     private sealed interface Const {
         data class Immediate(val ty: String, val text: String) : Const
         data class StringStruct(val ptrTy: String, val ptrExpr: String, val len: Int) : Const
@@ -189,9 +213,9 @@ class LLVMEmitter {
     private fun stringPtrExpr(content: String): Triple<String, String, Int> {
         val gname = strNames.getOrPut(content) { "@.str.${strCounter++}" }
         val enc = encodeCString(content)
-        val nBytes = enc.length + 1
+        val nBytes = utf8BytesLen(content) + 1
         val gep = "getelementptr inbounds ([$nBytes x i8], [$nBytes x i8]* $gname, i32 0, i32 0)"
-        return Triple("i8*", gep, enc.length)
+        return Triple("i8*", gep, utf8BytesLen(content))
     }
 
     private fun encodeCString(s: String): String {
@@ -278,6 +302,13 @@ class LLVMEmitter {
         return RValue.ValueReg(llTy, res)
     }
 
+    private fun asOperand(rv: RValue): Pair<String, String> = when(rv) {
+        is RValue.Immediate -> rv.llTy to rv.text
+        is RValue.ValueReg -> rv.llTy to rv.reg
+        is RValue.Aggregate -> error("aggregate value not supported here")
+    }
+
+    private fun utf8BytesLen(s: String): Int = s.toByteArray(Charsets.UTF_8).size
     private fun mangle(name: String): String = name
     private fun nextTmp(): String = "%t${tmp++}"
 }
