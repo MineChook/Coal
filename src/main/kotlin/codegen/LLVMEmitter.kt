@@ -196,11 +196,23 @@ class LLVMEmitter {
     private fun lowerBuiltinPrint(args: List<Expr>, newline: Boolean): RValue {
         require(args.size == 1) { "print/println requires exactly one argument" }
         val arg = valueOfExpr(args[0])
+
+        if(arg is RValue.Aggregate) {
+            val ptrTy = "i8*"
+            val fmt = if (newline) "%s\\0A" else "%s"
+            val (_, gep, _) = stringPtrExpr(fmt)
+
+            val tPtr = nextTmp()
+            val tLen = nextTmp()
+            fns.appendLine("  $tPtr = extractvalue { i8*, i32 } ${arg.literal}, 0")
+            fns.appendLine("  $tLen = extractvalue { i8*, i32 } ${arg.literal}, 1")
+            fns.appendLine("  call i32 (i8*, ...) @printf(i8* $gep, i8* $tPtr)")
+            return RValue.Immediate("i32", "0")
+        }
+
         val (argTy, argOp) = asOperand(arg)
-
-        val fmt = if(newline) "%d\n" else "%d"
+        val fmt = if(newline) "%d\\0A" else "%d"
         val (_, gep, _) = stringPtrExpr(fmt)
-
         fns.appendLine("  call i32 (i8*, ...) @printf(i8* $gep, $argTy $argOp)")
         return RValue.Immediate("i32", "0")
     }
@@ -270,7 +282,7 @@ class LLVMEmitter {
         fun opnd(rv: RValue): String = when(rv) {
             is RValue.Immediate -> rv.text
             is RValue.ValueReg -> rv.reg
-            is RValue.Aggregate -> error("unexpected aggregate in binary expression")
+            is RValue.Aggregate -> rv.literal
         }
 
         val ltext = opnd(lhs)
