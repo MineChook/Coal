@@ -18,6 +18,8 @@ class ModuleBuilder(
 
     fun declarePrintf() { decls.appendLine("declare i32 @printf(ptr, ...)") }
     fun declareSnprintf() { decls.appendLine("declare i32 @snprintf(ptr, i64, ptr, ...)") }
+    fun declareMalloc() { decls.appendLine("declare ptr @malloc(i64)") }
+    fun declareMemcpy() { decls.appendLine("declare ptr @memcpy(ptr, ptr, i64)") }
 
     fun declare(name: String, sig: String) {
         decls.appendLine("declare $sig @$name")
