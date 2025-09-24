@@ -52,6 +52,25 @@ class BlockBuilder(
         return t
     }
 
+    fun call(name: String, retTy: String, vararg args: Pair<String,String>): String {
+        val t = fn.nextTmp()
+        val actuals = if (args.isEmpty()) "" else args.joinToString(", ") { (ty, op) -> "$ty $op" }
+        out.appendLine("  $t = call $retTy @$name(${actuals})")
+        return t
+    }
+
+    fun zext(fromTy: String, v: String, toTy: String): String {
+        val t = fn.nextTmp()
+        out.appendLine("  $t = zext $fromTy $v to $toTy")
+        return t
+    }
+
+    fun gepByteOffset(basePtr: String, offsetI32: String): String {
+        val t = fn.nextTmp()
+        out.appendLine("  $t = getelementptr i8, ptr $basePtr, i32 $offsetI32")
+        return t
+    }
+
     fun packString(ptrReg: String, lenReg: String): String {
         val a0 = insertValue("{ ptr, i32 }", "undef", "ptr", ptrReg, 0)
         return insertValue("{ ptr, i32 }", a0, "i32", lenReg, 1)

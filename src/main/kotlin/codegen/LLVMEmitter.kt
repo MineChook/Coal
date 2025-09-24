@@ -21,6 +21,8 @@ class LLVMEmitter {
         mod = ModuleBuilder()
         mod.declarePrintf()
         mod.declareSnprintf()
+        mod.declareMalloc()
+        mod.declareMemcpy()
 
         for(d in prog.decls) {
             when(d) {
@@ -134,8 +136,14 @@ class LLVMEmitter {
 
     private fun lowerBinary(b: BlockBuilder, bin: Binary): RValue {
         val ty = (inferType(b, bin) as NamedType).name
+        if(ty == "string") {
+            require(bin.op == BinOp.Add) { "only + supported for strings" }
+            val lhs = valueOfExpr(b, bin.left)
+            val rhs = valueOfExpr(b, bin.right)
+            return concatStrings(b, lhs, rhs)
+        }
+        
         val llTy = if(ty == "float") "double" else "i32"
-
         fun asOp(rv: RValue): String = when(rv) {
             is RValue.Immediate -> rv.text
             is RValue.ValueReg -> rv.reg
@@ -214,9 +222,12 @@ class LLVMEmitter {
         is Binary -> {
             val lt = inferType(b, expr.left) as NamedType
             val rt = inferType(b, expr.right) as NamedType
-            require(lt == rt) { "type mismatch: $lt vs $rt" }
-            require(lt.name == "int" || lt.name == "float") { "unsupported binop on ${lt.name}" }
-            lt
+            require(lt == rt) { "type mismatch in binary expression: $lt vs $rt" }
+            when(lt.name) {
+                "int", "float" -> lt
+                "string" -> lt
+                else -> error("unsupported type in binary expression: ${lt.name}")
+            }
         }
 
         is Call -> NamedType("int")
@@ -285,6 +296,49 @@ class LLVMEmitter {
 
             else -> error("toFloat() supported only on string literals")
         }
+    }
+    
+    private fun concatStrings(b: BlockBuilder, a: RValue, c: RValue): RValue {
+        fun asStringParts(rv: RValue): Pair<String, String> {
+            return when(rv) {
+                is RValue.Aggregate -> {
+                    val p = b.extractValue("{ ptr, i32 }", rv.literal, 0)
+                    val l = b.extractValue("{ ptr, i32 }", rv.literal, 1)
+                    p to l
+                }
+                
+                is RValue.ValueReg -> {
+                    require(rv.llTy == "{ ptr, i32 }") { "expected string aggregate, got ${rv.llTy}" }
+                    val p = b.extractValue("{ ptr, i32 }", rv.reg, 0)
+                    val l = b.extractValue("{ ptr, i32 }", rv.reg, 1)
+                    p to l
+                }
+                
+                is RValue.Immediate -> error("cannot use immediate as string")
+            }
+        }
+        
+        val (aPtr, aLen) = asStringParts(a)
+        val (cPtr, cLen) = asStringParts(c)
+        val totalLen = b.add("i32", aLen, cLen)
+        
+        val one = "1"
+        val capI32 = b.add("i32", totalLen, one)
+        val capI64 = b.zext("i32", capI32, "i64")
+        val buf = b.call("malloc", "ptr", "i64" to capI64)
+        
+        val aLen64 = b.zext("i32", aLen, "i64")
+        b.call("memcpy", "ptr", "ptr" to buf, "ptr" to aPtr, "i64" to aLen64)
+        
+        val dst2 = b.gepByteOffset(buf, aLen)
+        val cLen64 = b.zext("i32", cLen, "i64")
+        b.call("memcpy", "ptr", "ptr" to dst2, "ptr" to cPtr, "i64" to cLen64)
+        
+        val nulPtr = b.gepByteOffset(buf, totalLen)
+        b.store("i8", "0", nulPtr)
+        
+        val packed = b.packString(buf, totalLen)
+        return RValue.ValueReg("{ ptr, i32 }", packed)
     }
 
     private fun asOperand(rv: RValue): Pair<String, String> = when(rv) {

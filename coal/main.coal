@@ -1,11 +1,6 @@
 fn main() {
-    const a = 5
-    const s = a.toString()
-    println(s)
-
-    const i2 = "123".toInt()
-    const f2 = "3.5".toFloat()
-
-    println(i2)
-    println(f2)
+    var hello: string = "hello"
+    var world: string = "world"
+    var helloWorld: string = hello + " " + world
+    println(helloWorld + "!")
 }

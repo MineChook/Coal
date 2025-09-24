@@ -136,12 +136,14 @@ class Parser(
         is StringLit -> NamedType("string")
 
         is Binary -> {
-            val leftTy = inferType(expr.left)
-            val rightTy = inferType(expr.right)
-            if(leftTy != rightTy) {
-                errorHere("type mismatch in binary expression: '${leftTy}' vs '${rightTy}'")
-            }
-            leftTy
+            val lt = inferType(expr.left) as NamedType
+            val rt = inferType(expr.right) as NamedType
+            require(lt == rt) { errorHere("type mismatch in binary expression: '${lt}' vs '${rt}'") }
+            require(
+                lt.name == "int" || lt.name == "float" || lt.name == "string"
+            ) { errorHere("invalid types for binary expression: '${lt}'") }
+
+            lt
         }
 
         is Ident, is Call -> errorHere("cannot infer type of expression")
