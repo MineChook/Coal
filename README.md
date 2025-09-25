@@ -14,11 +14,11 @@
 
 **Variables are declared by using the var keyword like in kotlin:**
 ```coal
-var x: int = 5
+var x = 5 // int
 var y: string = "Hello, World!"
 ```
 
-When creating a variable, you must specify the type of the variable. Coal is a statically typed language, meaning that the type of a variable cannot be changed after it is declared. 
+When creating a variable, you have the option to declare a type. You must always assign a type if you leave the variable undeclared, otherwise the compilier will figure out the type for you.
 
 **See the [Data Types](#data-types) section for more information.**
 
