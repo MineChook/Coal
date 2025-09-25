@@ -137,7 +137,7 @@ class LLVMEmitter {
                     }
                     if (receiverLlType == "double") {
                         // Convert float to int
-                        val intRegister = b.fltoint("double", asOperand(recv).second, "i32")
+                        val intRegister = b.fptosi("double", asOperand(recv).second, "i32")
                         RValue.ValueReg("i32", intRegister)
                     } else if (receiverLlType == "{ ptr, i32 }") {
                         // Convert string literal to int
@@ -157,7 +157,7 @@ class LLVMEmitter {
                     }
                     if (receiverLlType == "i32") {
                         // Convert int to float
-                        val floatRegister = b.inttofl("i32", asOperand(recv).second, "double")
+                        val floatRegister = b.sitofp("i32", asOperand(recv).second, "double")
                         RValue.ValueReg("double", floatRegister)
                     } else if (receiverLlType == "{ ptr, i32 }") {
                         // Convert string literal to float
@@ -192,6 +192,7 @@ class LLVMEmitter {
         val rhs = valueOfExpr(b, bin.right, llTy)
 
         val res = when(bin.op) {
+            BinOp.Pow -> if (llTy == "i32") b.pow(asOp(lhs), asOp(rhs)) else b.fpow(asOp(lhs), asOp(rhs))
             BinOp.Add -> if (llTy == "i32") b.add(llTy, asOp(lhs), asOp(rhs)) else b.fadd(asOp(lhs), asOp(rhs))
             BinOp.Sub -> if (llTy == "i32") b.sub(llTy, asOp(lhs), asOp(rhs)) else b.fsub(asOp(lhs), asOp(rhs))
             BinOp.Mul -> if (llTy == "i32") b.mul(llTy, asOp(lhs), asOp(rhs)) else b.fmul(asOp(lhs), asOp(rhs))

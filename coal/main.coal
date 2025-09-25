@@ -6,4 +6,6 @@ fn main() {
     var helloWorld: string = hello + " " + world
     println(helloWorld + "!")
     println(i)
+    var p: int = 5^2
+    println(p)
 }

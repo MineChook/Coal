@@ -267,6 +267,7 @@ class Parser(
     }
 
     private fun precedenceOf(kind: TokenKind): Int = when(kind) {
+        is TokenKind.Caret -> 70
         is TokenKind.Star, is TokenKind.Slash, is TokenKind.Percent -> 60
         is TokenKind.Plus, is TokenKind.Minus -> 50
         else -> -1
@@ -278,6 +279,7 @@ class Parser(
         is TokenKind.Star -> BinOp.Mul
         is TokenKind.Slash -> BinOp.Div
         is TokenKind.Percent -> BinOp.Mod
+        is TokenKind.Caret -> BinOp.Pow
         else -> errorHere("invalid binary operator: '$kind'")
     }
 

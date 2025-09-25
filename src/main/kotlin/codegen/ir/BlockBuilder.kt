@@ -110,6 +110,16 @@ class BlockBuilder(
         return t
     }
 
+    fun pow(a: String, b: String): String {
+        val lhsF = sitofp("i32", a, "double")
+        val rhsF = sitofp("i32", b, "double")
+        val f = fn.nextTmp()
+        out.appendLine("  $f = call double @llvm.pow.f64(double $lhsF, double $rhsF)") // double pow
+        val result = fptosi("double", f, "i32")
+        return result
+
+    }
+
     fun sdiv(ty: String, a: String, b: String): String {
         val t = fn.nextTmp()
         out.appendLine("  $t = sdiv $ty $a, $b")
@@ -125,6 +135,12 @@ class BlockBuilder(
     fun fadd(a: String, b: String): String {
         val t = fn.nextTmp()
         out.appendLine("  $t = fadd double $a, $b")
+        return t
+    }
+
+    fun sadd(a: String, b: String): String {
+        val t = fn.nextTmp()
+
         return t
     }
 
@@ -146,6 +162,12 @@ class BlockBuilder(
         return t
     }
 
+    fun fpow(a: String, b: String): String {
+        val t = fn.nextTmp()
+        out.appendLine("  $t = call double @llvm.pow.f64(double $a, double $b)")
+        return t
+    }
+
     fun br(label: String) {
         out.appendLine("  br label %$label")
     }
@@ -155,16 +177,17 @@ class BlockBuilder(
     }
 
     // float to int
-    fun fltoint(fromType: String, value: String, toType: String): String {
+    fun fptosi(fromType: String, value: String, toType: String): String {
         val tempRegister = fn.nextTmp()
         out.appendLine("  $tempRegister = fptosi $fromType $value to $toType")
         return tempRegister
     }
 
     // int to float
-    fun inttofl(fromType: String, value: String, toType: String): String {
+    fun sitofp(fromType: String, value: String, toType: String): String {
         val resultRegister = fn.nextTmp()
         out.appendLine("  $resultRegister = sitofp $fromType $value to $toType")
         return resultRegister
     }
+
 }

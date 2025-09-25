@@ -15,6 +15,7 @@ build/
 out/
 !**/src/main/**/out/
 !**/src/test/**/out/
+*.xml
 
 ### Kotlin ###
 .kotlin
@@ -46,3 +47,4 @@ bin/
 
 *.ll
 /coal/app
+/.idea/
