@@ -173,6 +173,7 @@ class Lexer(
             }
             '-' -> add(TokenKind.Minus, start, line0, col0)
             '*' -> add(TokenKind.Star, start, line0, col0)
+            '^' -> add(TokenKind.Caret, start, line0, col0)
             '/' -> add(TokenKind.Slash, start, line0, col0)
             '%' -> add(TokenKind.Percent, start, line0, col0)
             '=' -> add(TokenKind.Equal, start, line0, col0)

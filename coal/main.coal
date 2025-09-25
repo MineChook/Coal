@@ -1,6 +1,11 @@
 fn main() {
     var hello: string = "hello"
     var world: string = "world"
+    var f: float = 1.5
+    var i: int = f.toInt()
     var helloWorld: string = hello + " " + world
     println(helloWorld + "!")
+    println(i)
+    var p: int = 5^2
+    println(p)
 }

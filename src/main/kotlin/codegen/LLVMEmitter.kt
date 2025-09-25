@@ -128,8 +128,46 @@ class LLVMEmitter {
                 is RValue.Immediate, is RValue.ValueReg -> numberOrCharToString(b, recv)
             }
 
-            "toInt" -> stringToIntIfLiteral(m.receiver)
-            "toFloat" -> stringToFloatIfLiteral(m.receiver)
+            "toInt" -> when (recv) {
+                is RValue.Aggregate, is RValue.Immediate, is RValue.ValueReg -> {
+                    val receiverLlType = when (recv) {
+                        is RValue.Immediate -> recv.llTy
+                        is RValue.ValueReg -> recv.llTy
+                        else -> ""
+                    }
+                    if (receiverLlType == "double") {
+                        // Convert float to int
+                        val intRegister = b.fptosi("double", asOperand(recv).second, "i32")
+                        RValue.ValueReg("i32", intRegister)
+                    } else if (receiverLlType == "{ ptr, i32 }") {
+                        // Convert string literal to int
+                        stringToIntIfLiteral(m.receiver)
+                    } else {
+                        error("toInt() not supported for type $receiverLlType")
+                    }
+                }
+            }
+
+            "toFloat" -> when (recv) {
+                is RValue.Immediate, is RValue.ValueReg -> {
+                    val receiverLlType = when (recv) {
+                        is RValue.Immediate -> recv.llTy
+                        is RValue.ValueReg -> recv.llTy
+                        else -> ""
+                    }
+                    if (receiverLlType == "i32") {
+                        // Convert int to float
+                        val floatRegister = b.sitofp("i32", asOperand(recv).second, "double")
+                        RValue.ValueReg("double", floatRegister)
+                    } else if (receiverLlType == "{ ptr, i32 }") {
+                        // Convert string literal to float
+                        stringToFloatIfLiteral(m.receiver)
+                    } else {
+                        error("toFloat() not supported for type $receiverLlType")
+                    }
+                }
+                else -> error("toFloat() supported only on int or string types")
+            }
             else -> error("unknown method ${m.method}")
         }
     }
@@ -154,6 +192,7 @@ class LLVMEmitter {
         val rhs = valueOfExpr(b, bin.right, llTy)
 
         val res = when(bin.op) {
+            BinOp.Pow -> if (llTy == "i32") b.pow(asOp(lhs), asOp(rhs)) else b.fpow(asOp(lhs), asOp(rhs))
             BinOp.Add -> if (llTy == "i32") b.add(llTy, asOp(lhs), asOp(rhs)) else b.fadd(asOp(lhs), asOp(rhs))
             BinOp.Sub -> if (llTy == "i32") b.sub(llTy, asOp(lhs), asOp(rhs)) else b.fsub(asOp(lhs), asOp(rhs))
             BinOp.Mul -> if (llTy == "i32") b.mul(llTy, asOp(lhs), asOp(rhs)) else b.fmul(asOp(lhs), asOp(rhs))

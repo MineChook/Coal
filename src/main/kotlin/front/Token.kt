@@ -33,6 +33,7 @@ sealed class TokenKind {
     data object Plus : TokenKind()
     data object Minus : TokenKind()
     data object Star : TokenKind()
+    data object Caret : TokenKind()
     data object Slash : TokenKind()
     data object Percent : TokenKind()
     data object PlusEqual : TokenKind()
