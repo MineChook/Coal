@@ -153,4 +153,18 @@ class BlockBuilder(
     fun brCond(condTy: String, cond: String, thenLabel: String, elseLabel: String) {
         out.appendLine("  br $condTy $cond, label %$thenLabel, label %$elseLabel")
     }
+
+    // float to int
+    fun fltoint(fromType: String, value: String, toType: String): String {
+        val tempRegister = fn.nextTmp()
+        out.appendLine("  $tempRegister = fptosi $fromType $value to $toType")
+        return tempRegister
+    }
+
+    // int to float
+    fun inttofl(fromType: String, value: String, toType: String): String {
+        val resultRegister = fn.nextTmp()
+        out.appendLine("  $resultRegister = sitofp $fromType $value to $toType")
+        return resultRegister
+    }
 }

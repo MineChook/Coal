@@ -128,8 +128,46 @@ class LLVMEmitter {
                 is RValue.Immediate, is RValue.ValueReg -> numberOrCharToString(b, recv)
             }
 
-            "toInt" -> stringToIntIfLiteral(m.receiver)
-            "toFloat" -> stringToFloatIfLiteral(m.receiver)
+            "toInt" -> when (recv) {
+                is RValue.Aggregate, is RValue.Immediate, is RValue.ValueReg -> {
+                    val receiverLlType = when (recv) {
+                        is RValue.Immediate -> recv.llTy
+                        is RValue.ValueReg -> recv.llTy
+                        else -> ""
+                    }
+                    if (receiverLlType == "double") {
+                        // Convert float to int
+                        val intRegister = b.fltoint("double", asOperand(recv).second, "i32")
+                        RValue.ValueReg("i32", intRegister)
+                    } else if (receiverLlType == "{ ptr, i32 }") {
+                        // Convert string literal to int
+                        stringToIntIfLiteral(m.receiver)
+                    } else {
+                        error("toInt() not supported for type $receiverLlType")
+                    }
+                }
+            }
+
+            "toFloat" -> when (recv) {
+                is RValue.Immediate, is RValue.ValueReg -> {
+                    val receiverLlType = when (recv) {
+                        is RValue.Immediate -> recv.llTy
+                        is RValue.ValueReg -> recv.llTy
+                        else -> ""
+                    }
+                    if (receiverLlType == "i32") {
+                        // Convert int to float
+                        val floatRegister = b.inttofl("i32", asOperand(recv).second, "double")
+                        RValue.ValueReg("double", floatRegister)
+                    } else if (receiverLlType == "{ ptr, i32 }") {
+                        // Convert string literal to float
+                        stringToFloatIfLiteral(m.receiver)
+                    } else {
+                        error("toFloat() not supported for type $receiverLlType")
+                    }
+                }
+                else -> error("toFloat() supported only on int or string types")
+            }
             else -> error("unknown method ${m.method}")
         }
     }
