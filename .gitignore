@@ -47,3 +47,4 @@ bin/
 
 *.ll
 /coal/app
+/.idea/
