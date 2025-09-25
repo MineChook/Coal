@@ -58,6 +58,16 @@ println("Hello, World!")
 
 Coming soon!
 
+## Math
+**Coal supports the following mathematical operations:**
+- Addition: +
+- Subtraction: -
+- Multiplication: *
+- Division: /
+- Modulus: %
+
+More coming soon!
+
 ## How to Compile and Run
 **To compile and run a coal program, use the following command:**
 ```bash
