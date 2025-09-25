@@ -1,0 +1,23 @@
+// Example 3: Type Conversions
+// This shows how to convert between different data types
+
+fn main() {
+    // Different data types
+    var myFloat: float = 3.14159
+    var myInt: int = 42
+    var myBool: bool = true
+    var myChar: char = 'A'
+    
+    // Converting numbers to strings
+    println("Float as string: " + myFloat.toString())
+    println("Integer as string: " + myInt.toString())
+    println("Boolean as string: " + myBool.toString())
+    
+    // Converting float to int (truncates decimal part)
+    var floatToInt: int = myFloat.toInt()
+    println("3.14159 as int: " + floatToInt.toString())
+    
+    // Converting int to float
+    var intToFloat: float = myInt.toFloat()
+    println("42 as float: " + intToFloat.toString())
+}

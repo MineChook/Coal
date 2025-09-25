@@ -1,0 +1,19 @@
+// Example 2: String Operations
+// This shows how to work with strings in Coal
+
+fn main() {
+    // String variable declarations
+    var firstName: string = "John"
+    var lastName: string = "Doe"
+    var greeting: string = "Hello"
+    
+    // String concatenation
+    var fullName: string = firstName + " " + lastName
+    var message: string = greeting + ", " + fullName + "!"
+    
+    // Print the results
+    println("First name: " + firstName)
+    println("Last name: " + lastName)
+    println("Full name: " + fullName)
+    println("Message: " + message)
+}

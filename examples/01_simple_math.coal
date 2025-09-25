@@ -1,0 +1,24 @@
+// Example 1: Simple Math Operations
+// This shows basic variable declarations and arithmetic
+
+fn main() {
+    // Declare integer variables
+    var a: int = 10
+    var b: int = 5
+    
+    // Basic arithmetic operations
+    var sum: int = a + b
+    var difference: int = a - b  
+    var product: int = a * b
+    var quotient: int = a / b
+    var remainder: int = a % b
+    
+    // Print the results
+    println("a = " + a.toString())
+    println("b = " + b.toString())
+    println("a + b = " + sum.toString())
+    println("a - b = " + difference.toString())
+    println("a * b = " + product.toString())
+    println("a / b = " + quotient.toString())
+    println("a % b = " + remainder.toString())
+}
