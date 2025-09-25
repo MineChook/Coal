@@ -37,7 +37,7 @@ import kotlinx.serialization.Serializable
     val right: Expr
 ) : Expr
 
-@Serializable enum class BinOp { Add, Sub, Mul, Div, Mod }
+@Serializable enum class BinOp { Add, Sub, Mul, Div, Mod, Pow }
 
 @Serializable data class Call(
     val callee: String,
