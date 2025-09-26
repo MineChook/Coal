@@ -41,6 +41,10 @@ fn main() {
 }
 ```
 
+At the moment, you cannot make any other functions other than the main function. (We plan to add this soon.)
+
+**Important:** All coal files always start with a main function, which is the entry point of the program.
+
 ### If statements
 ```coal
 fn main() {
@@ -54,10 +58,6 @@ fn main() {
     }
 }
 ```
-
-At the moment, you cannot make any other functions other than the main function. (We plan to add this soon.)
-
-**Important:** All coal files always start with a main function, which is the entry point of the program.
 
 ### System Out and In
 **To print to the console, use the println function:**
