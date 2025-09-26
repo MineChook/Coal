@@ -156,15 +156,46 @@ class Parser(
         is CharLit -> NamedType("char")
         is StringLit -> NamedType("string")
 
-        is Binary -> {
-            val lt = inferType(expr.left) as NamedType
-            val rt = inferType(expr.right) as NamedType
-            require(lt == rt) { errorHere("type mismatch in binary expression: '${lt}' vs '${rt}'") }
-            require(
-                lt.name == "int" || lt.name == "float" || lt.name == "string"
-            ) { errorHere("invalid types for binary expression: '${lt}'") }
+        is Unary -> when(expr.op) {
+            UnOp.Not -> {
+                val t = inferType(expr.expr)
+                require(t == NamedType("bool")) { errorHere("operator '!' expects bool") }
+                NamedType("bool")
+            }
+        }
 
-            lt
+        is Binary -> when(expr.op) {
+            BinOp.Add, BinOp.Or -> {
+                val lt = inferType(expr.left)
+                val rt = inferType(expr.right)
+                require(lt == NamedType("bool") && rt == NamedType("bool")) {
+                    errorHere("operator '&&' and '||' expects bool operands")
+                }
+
+                NamedType("bool")
+            }
+
+            BinOp.Eq, BinOp.Ne, BinOp.Lt, BinOp.Le, BinOp.Gt, BinOp.Ge -> {
+                val lt = inferType(expr.left) as NamedType
+                val rt = inferType(expr.right) as NamedType
+                require(lt == rt) { errorHere("Type mismatch: cannot compare '${lt}' with '${rt}'") }
+                when(expr.op) {
+                    BinOp.Eq, BinOp.Ne -> NamedType("bool")
+                    else -> {
+                        require(lt.name in listOf("int", "float", "char")) { errorHere("Relational operators can only be applied to int, float, or char") }
+                        NamedType("bool")
+                    }
+                }
+            }
+
+            else -> {
+                val lt = inferType(expr.left) as NamedType
+                val rt = inferType(expr.right) as NamedType
+                require(lt == rt) { errorHere("Type mismatch: cannot operate '${lt}' with '${rt}'") }
+                require(lt.name in listOf("int", "float", "string")) { errorHere("Invalid types for binary expression: '${lt}'") }
+
+                lt
+            }
         }
 
         is Ident, is Call -> errorHere("cannot infer type of expression")
@@ -298,7 +329,7 @@ class Parser(
     private fun precedenceOf(kind: TokenKind): Int = when(kind) {
         is TokenKind.OrOr -> 10
         is TokenKind.AndAnd -> 20
-        if TokenKind.EqualEqual, is TokenKind.BangEqual -> 30
+        is TokenKind.EqualEqual, is TokenKind.BangEqual -> 30
         is TokenKind.Lt, is TokenKind.LtEq, is TokenKind.Gt, is TokenKind.GtEq -> 40
         is TokenKind.Plus, is TokenKind.Minus -> 50
         is TokenKind.Star, is TokenKind.Slash, is TokenKind.Percent -> 60
