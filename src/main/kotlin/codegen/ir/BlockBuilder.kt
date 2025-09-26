@@ -190,4 +190,30 @@ class BlockBuilder(
         return resultRegister
     }
 
+    fun icmp(pred: String, ty: String, a: String, b: String): String {
+        val t = fn.nextTmp()
+        out.appendLine("  $t = icmp $pred $ty $a, $b")
+        return t
+    }
+
+    fun fcmp(pred: String, a: String, b: String): String {
+        val t = fn.nextTmp()
+        out.appendLine("  $t = fcmp $pred double $a, $b")
+        return t
+    }
+
+    fun phi(ty: String, vararg incoming: Pair<String, String>): String {
+        val t = fn.nextTmp()
+        val inc = incoming.joinToString(", ") { "[ ${it.first}, %${it.second} ]" }
+        out.appendLine("  $t = phi $ty $inc")
+        return t
+    }
+
+    fun xorI1(op: String): String {
+        val t = fn.nextTmp()
+        out.appendLine("  $t = xor i1 $op, true")
+        return t
+    }
+
+    fun nextBlock(label: String): BlockBuilder = fn.block(label)
 }

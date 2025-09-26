@@ -42,6 +42,7 @@ class Parser(
     private fun parseStmt(): Stmt {
         return when {
             check(TokenKind.Var) || check(TokenKind.Const) -> parseVarDecl()
+            check(TokenKind.If) -> parseIfStmt()
             check(TokenKind.Identifier) -> {
                 if(peekNextIsAssignOp()) parseAssignStmt() else ExprStmt(parseExpr())
             }
@@ -114,6 +115,26 @@ class Parser(
         return Assign(name, value)
     }
 
+    private fun parseIfStmt(): Stmt {
+        consume(TokenKind.If, "expected 'if'")
+        consume(TokenKind.LParen, "expected '(' after 'if'")
+        val cond0 = parseExpr()
+        consume(TokenKind.RParen, "expected ')' after condition")
+        val then0 = parseBlock()
+
+        val branches = mutableListOf(IfBranch(cond0, then0))
+        while(match(TokenKind.Elif)) {
+            consume(TokenKind.LParen, "expected '(' after 'elif'")
+            val c = parseExpr()
+            consume(TokenKind.RParen, "expected ')' after condition")
+            val b = parseBlock()
+            branches += IfBranch(c, b)
+        }
+
+        val elseB = if(match(TokenKind.Else)) parseBlock() else null
+        return IfStmt(branches, elseB)
+    }
+
     private fun parseTypeRef(): TypeRef {
         val t = when {
             match(TokenKind.KwInt) -> "int"
@@ -135,15 +156,46 @@ class Parser(
         is CharLit -> NamedType("char")
         is StringLit -> NamedType("string")
 
-        is Binary -> {
-            val lt = inferType(expr.left) as NamedType
-            val rt = inferType(expr.right) as NamedType
-            require(lt == rt) { errorHere("type mismatch in binary expression: '${lt}' vs '${rt}'") }
-            require(
-                lt.name == "int" || lt.name == "float" || lt.name == "string"
-            ) { errorHere("invalid types for binary expression: '${lt}'") }
+        is Unary -> when(expr.op) {
+            UnOp.Not -> {
+                val t = inferType(expr.expr)
+                require(t == NamedType("bool")) { errorHere("operator '!' expects bool") }
+                NamedType("bool")
+            }
+        }
 
-            lt
+        is Binary -> when(expr.op) {
+            BinOp.And, BinOp.Or -> {
+                val lt = inferType(expr.left)
+                val rt = inferType(expr.right)
+                require(lt == NamedType("bool") && rt == NamedType("bool")) {
+                    errorHere("operator '&&' and '||' expects bool operands")
+                }
+
+                NamedType("bool")
+            }
+
+            BinOp.Eq, BinOp.Ne, BinOp.Lt, BinOp.Le, BinOp.Gt, BinOp.Ge -> {
+                val lt = inferType(expr.left) as NamedType
+                val rt = inferType(expr.right) as NamedType
+                require(lt == rt) { errorHere("Type mismatch: cannot compare '${lt}' with '${rt}'") }
+                when(expr.op) {
+                    BinOp.Eq, BinOp.Ne -> NamedType("bool")
+                    else -> {
+                        require(lt.name in listOf("int", "float", "char")) { errorHere("Relational operators can only be applied to int, float, or char") }
+                        NamedType("bool")
+                    }
+                }
+            }
+
+            else -> {
+                val lt = inferType(expr.left) as NamedType
+                val rt = inferType(expr.right) as NamedType
+                require(lt == rt) { errorHere("Type mismatch: cannot operate '${lt}' with '${rt}'") }
+                require(lt.name in listOf("int", "float", "string")) { errorHere("Invalid types for binary expression: '${lt}'") }
+
+                lt
+            }
         }
 
         is Ident, is Call -> errorHere("cannot infer type of expression")
@@ -158,19 +210,31 @@ class Parser(
     private fun parseExpr(): Expr = parseBinaryExpr(0)
 
     private fun parseBinaryExpr(minPrec: Int): Expr {
-        var lhs = parsePostfix()
+        var lhs = parseUnary()
         while(true) {
             val tok = peek()
             val prec = precedenceOf(tok.kind)
-            if(prec < minPrec) break
+            if (prec < minPrec) break
 
             val opTok = advance()
-            var rhs = parsePostfix()
+            var rhs = parseUnary()
 
             while(true) {
-                val nextPrec = precedenceOf(peek().kind)
+                val nextTok = peek()
+                val nextPrec = precedenceOf(nextTok.kind)
                 if(nextPrec > prec) {
-                    rhs = parseBinaryExpr(nextPrec)
+                    val op2 = advance()
+                    var rhs2 = parseUnary()
+
+                    while(true) {
+                        val afterTok = peek()
+                        val afterPrec = precedenceOf(afterTok.kind)
+                        if(afterPrec > precedenceOf(op2.kind)) {
+                            rhs2 = parseBinaryExpr(afterPrec)
+                        } else break
+                    }
+
+                    rhs = Binary(binOpOf(op2.kind), rhs, rhs2)
                 } else break
             }
 
@@ -178,6 +242,14 @@ class Parser(
         }
 
         return lhs
+    }
+
+    private fun parseUnary(): Expr {
+        return if(match(TokenKind.Bang)) {
+            Unary(UnOp.Not, parseUnary())
+        } else {
+            parsePostfix()
+        }
     }
 
     private fun parsePostfix(): Expr {
@@ -267,9 +339,13 @@ class Parser(
     }
 
     private fun precedenceOf(kind: TokenKind): Int = when(kind) {
-        is TokenKind.Caret -> 70
-        is TokenKind.Star, is TokenKind.Slash, is TokenKind.Percent -> 60
+        is TokenKind.OrOr -> 10
+        is TokenKind.AndAnd -> 20
+        is TokenKind.EqualEqual, is TokenKind.BangEqual -> 30
+        is TokenKind.Lt, is TokenKind.LtEq, is TokenKind.Gt, is TokenKind.GtEq -> 40
         is TokenKind.Plus, is TokenKind.Minus -> 50
+        is TokenKind.Star, is TokenKind.Slash, is TokenKind.Percent -> 60
+        is TokenKind.Caret -> 70
         else -> -1
     }
 
@@ -280,6 +356,14 @@ class Parser(
         is TokenKind.Slash -> BinOp.Div
         is TokenKind.Percent -> BinOp.Mod
         is TokenKind.Caret -> BinOp.Pow
+        is TokenKind.EqualEqual -> BinOp.Eq
+        is TokenKind.BangEqual -> BinOp.Ne
+        is TokenKind.Lt -> BinOp.Lt
+        is TokenKind.LtEq -> BinOp.Le
+        is TokenKind.Gt -> BinOp.Gt
+        is TokenKind.GtEq -> BinOp.Ge
+        is TokenKind.AndAnd -> BinOp.And
+        is TokenKind.OrOr -> BinOp.Or
         else -> errorHere("invalid binary operator: '$kind'")
     }
 
