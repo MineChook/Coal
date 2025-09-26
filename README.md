@@ -41,6 +41,20 @@ fn main() {
 }
 ```
 
+### If statements
+```coal
+fn main() {
+    var x = 5
+    if(x == 5) {
+        println("x = 5")
+    } elif(x != 5 && x >= 10) {
+        println("x isnt 5 and is greater than 10")
+    } else {
+        println("x isnt 5 and is less than 10")
+    }
+}
+```
+
 At the moment, you cannot make any other functions other than the main function. (We plan to add this soon.)
 
 **Important:** All coal files always start with a main function, which is the entry point of the program.
