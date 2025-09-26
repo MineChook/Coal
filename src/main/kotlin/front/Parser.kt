@@ -42,6 +42,7 @@ class Parser(
     private fun parseStmt(): Stmt {
         return when {
             check(TokenKind.Var) || check(TokenKind.Const) -> parseVarDecl()
+            check(TokenKind.If) -> parseIfStmt()
             check(TokenKind.Identifier) -> {
                 if(peekNextIsAssignOp()) parseAssignStmt() else ExprStmt(parseExpr())
             }
@@ -112,6 +113,26 @@ class Parser(
         }
 
         return Assign(name, value)
+    }
+
+    private fun parseIfStmt(): Stmt {
+        consume(TokenKind.If, "expected 'if'")
+        consume(TokenKind.LParen, "expected '(' after 'if'")
+        val cond0 = parseExpr()
+        consume(TokenKind.RParen, "expected ')' after condition")
+        val then0 = parseBlock()
+
+        val branches = mutableListOf(IfBranch(cond0, then0))
+        while(match(TokenKind.Elif)) {
+            consume(TokenKind.LParen, "expected '(' after 'elif'")
+            val c = parseExpr()
+            consume(TokenKind.RParen, "expected ')' after condition")
+            val b = parseBlock()
+            branches += IfBranch(c, b)
+        }
+
+        val elseB = if(match(TokenKind.Else)) parseBlock() else null
+        return IfStmt(branches, elseB)
     }
 
     private fun parseTypeRef(): TypeRef {
@@ -267,9 +288,13 @@ class Parser(
     }
 
     private fun precedenceOf(kind: TokenKind): Int = when(kind) {
-        is TokenKind.Caret -> 70
-        is TokenKind.Star, is TokenKind.Slash, is TokenKind.Percent -> 60
+        is TokenKind.OrOr -> 10
+        is TokenKind.AndAnd -> 20
+        if TokenKind.EqualEqual, is TokenKind.BangEqual -> 30
+        is TokenKind.Lt, is TokenKind.LtEq, is TokenKind.Gt, is TokenKind.GtEq -> 40
         is TokenKind.Plus, is TokenKind.Minus -> 50
+        is TokenKind.Star, is TokenKind.Slash, is TokenKind.Percent -> 60
+        is TokenKind.Caret -> 70
         else -> -1
     }
 
@@ -280,6 +305,14 @@ class Parser(
         is TokenKind.Slash -> BinOp.Div
         is TokenKind.Percent -> BinOp.Mod
         is TokenKind.Caret -> BinOp.Pow
+        is TokenKind.EqualEqual -> BinOp.Eq
+        is TokenKind.BangEqual -> BinOp.Ne
+        is TokenKind.Lt -> BinOp.Lt
+        is TokenKind.LtEq -> BinOp.Le
+        is TokenKind.Gt -> BinOp.Gt
+        is TokenKind.GtEq -> BinOp.Ge
+        is TokenKind.AndAnd -> BinOp.And
+        is TokenKind.OrOr -> BinOp.Or
         else -> errorHere("invalid binary operator: '$kind'")
     }
 
