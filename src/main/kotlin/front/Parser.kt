@@ -179,14 +179,14 @@ class Parser(
     private fun parseExpr(): Expr = parseBinaryExpr(0)
 
     private fun parseBinaryExpr(minPrec: Int): Expr {
-        var lhs = parsePostfix()
+        var lhs = parseUnary()
         while(true) {
             val tok = peek()
             val prec = precedenceOf(tok.kind)
             if(prec < minPrec) break
 
             val opTok = advance()
-            var rhs = parsePostfix()
+            var rhs = parseUnary()
 
             while(true) {
                 val nextPrec = precedenceOf(peek().kind)
@@ -199,6 +199,14 @@ class Parser(
         }
 
         return lhs
+    }
+
+    private fun parseUnary(): Expr {
+        return if(match(TokenKind.Bang)) {
+            Unary(UnOp.Not, parseUnary())
+        } else {
+            parsePostfix()
+        }
     }
 
     private fun parsePostfix(): Expr {
