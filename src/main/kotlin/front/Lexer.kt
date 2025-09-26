@@ -179,7 +179,60 @@ class Lexer(
             '^' -> add(TokenKind.Caret, start, line0, col0)
             '/' -> add(TokenKind.Slash, start, line0, col0)
             '%' -> add(TokenKind.Percent, start, line0, col0)
-            '=' -> add(TokenKind.Equal, start, line0, col0)
+            '=' -> {
+                if(peek() == '=') {
+                    advance()
+                    add(TokenKind.EqualEqual, start, line0, col0)
+                } else {
+                    add(TokenKind.Equal, start, line0, col0)
+                }
+            }
+
+            '!' -> {
+                if(peek() == '=') {
+                    advance()
+                    add(TokenKind.BangEqual, start, line0, col0)
+                } else {
+                    add(TokenKind.Bang, start, line0, col0)
+                }
+            }
+
+            '<' -> {
+                if(peek() == '=') {
+                    advance()
+                    add(TokenKind.LtEq, start, line0, col0)
+                } else {
+                    add(TokenKind.Lt, start, line0, col0)
+                }
+            }
+
+            '>' -> {
+                if(peek() == '=') {
+                    advance()
+                    add(TokenKind.GtEq, start, line0, col0)
+                } else {
+                    add(TokenKind.Gt, start, line0, col0)
+                }
+            }
+
+            '&' -> {
+                if(peek() == '&') {
+                    advance()
+                    add(TokenKind.AndAnd, start, line0, col0)
+                } else {
+                    lexError("Unexpected character: '&'", start, line0, col0)
+                }
+            }
+
+            '|' -> {
+                if(peek() == '|') {
+                    advance()
+                    add(TokenKind.OrOr, start, line0, col0)
+                } else {
+                    lexError("Unexpected character: '|'", start, line0, col0)
+                }
+            }
+
             ';' -> { /* ignore semicolons */ }
             '.' -> {
                 if(peek() == '.') {

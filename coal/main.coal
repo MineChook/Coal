@@ -1,11 +1,16 @@
 fn main() {
-    var hello: string = "hello"
-    var world: string = "world"
-    var f: float = 1.5
-    var i: int = f.toInt()
-    var helloWorld: string = hello + " " + world
-    println(helloWorld + "!")
-    println(i)
-    var p: int = 5^2
-    println(p)
+    var x = 5
+
+    if(x == 5 && (!x == 4) || false) {
+        println("5 = 5")
+    } elif(x != 5 && x < 10) {
+        println("this wont appear")
+    } else {
+        println("else")
+    }
+
+    var a = false
+    var b = true
+    if(a && println("never runs")) { }
+    if(b || println("also skipped")) { }
 }

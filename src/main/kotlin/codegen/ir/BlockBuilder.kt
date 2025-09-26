@@ -209,5 +209,11 @@ class BlockBuilder(
         return t
     }
 
+    fun xorI1(op: String): String {
+        val t = fn.nextTmp()
+        out.appendLine("  $t = xor i1 $op, true")
+        return t
+    }
+
     fun nextBlock(label: String): BlockBuilder = fn.block(label)
 }

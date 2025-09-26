@@ -165,7 +165,7 @@ class Parser(
         }
 
         is Binary -> when(expr.op) {
-            BinOp.Add, BinOp.Or -> {
+            BinOp.And, BinOp.Or -> {
                 val lt = inferType(expr.left)
                 val rt = inferType(expr.right)
                 require(lt == NamedType("bool") && rt == NamedType("bool")) {
