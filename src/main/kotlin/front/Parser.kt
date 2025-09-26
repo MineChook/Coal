@@ -214,15 +214,27 @@ class Parser(
         while(true) {
             val tok = peek()
             val prec = precedenceOf(tok.kind)
-            if(prec < minPrec) break
+            if (prec < minPrec) break
 
             val opTok = advance()
             var rhs = parseUnary()
 
             while(true) {
-                val nextPrec = precedenceOf(peek().kind)
+                val nextTok = peek()
+                val nextPrec = precedenceOf(nextTok.kind)
                 if(nextPrec > prec) {
-                    rhs = parseBinaryExpr(nextPrec)
+                    val op2 = advance()
+                    var rhs2 = parseUnary()
+
+                    while(true) {
+                        val afterTok = peek()
+                        val afterPrec = precedenceOf(afterTok.kind)
+                        if(afterPrec > precedenceOf(op2.kind)) {
+                            rhs2 = parseBinaryExpr(afterPrec)
+                        } else break
+                    }
+
+                    rhs = Binary(binOpOf(op2.kind), rhs, rhs2)
                 } else break
             }
 
