@@ -19,7 +19,10 @@ class Lexer(
         "float" to TokenKind.KwFloat,
         "bool" to TokenKind.KwBool,
         "char" to TokenKind.KwChar,
-        "string" to TokenKind.KwString
+        "string" to TokenKind.KwString,
+        "if" to TokenKind.If,
+        "elif" to TokenKind.Elif,
+        "else" to TokenKind.Else
     )
 
     fun lex(): List<Token> {

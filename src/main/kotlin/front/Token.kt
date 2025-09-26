@@ -12,6 +12,9 @@ sealed class TokenKind {
     data object KwBool : TokenKind()
     data object KwChar : TokenKind()
     data object KwString : TokenKind()
+    data object If : TokenKind()
+    data object Elif : TokenKind()
+    data object Else : TokenKind()
 
     // IDENTIFIERS & LITERALS
     data object Identifier : TokenKind()
@@ -28,6 +31,10 @@ sealed class TokenKind {
     data object Colon : TokenKind()
     data object Comma : TokenKind()
     data object Equal : TokenKind()
+    data object EqualEqual : TokenKind()
+    data object Bang : TokenKind()
+    data object BangEqual : TokenKind()
+    data object PlusEqual : TokenKind()
     data object Dot : TokenKind()
     data object DotDot : TokenKind()
     data object Plus : TokenKind()
@@ -36,7 +43,12 @@ sealed class TokenKind {
     data object Caret : TokenKind()
     data object Slash : TokenKind()
     data object Percent : TokenKind()
-    data object PlusEqual : TokenKind()
+    data object Lt : TokenKind()
+    data object LtEq : TokenKind()
+    data object Gt : TokenKind()
+    data object GtEq : TokenKind()
+    data object AndAnd : TokenKind()
+    data object OrOr : TokenKind()
 
     // END
     data object EOF : TokenKind()

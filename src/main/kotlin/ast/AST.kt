@@ -37,7 +37,11 @@ import kotlinx.serialization.Serializable
     val right: Expr
 ) : Expr
 
-@Serializable enum class BinOp { Add, Sub, Mul, Div, Mod, Pow }
+@Serializable enum class BinOp {
+    Add, Sub, Mul, Div, Mod, Pow,
+    Eq, Ne, Lt, Le, Gt, Ge,
+    And, Or
+}
 
 @Serializable data class Call(
     val callee: String,
@@ -49,6 +53,23 @@ import kotlinx.serialization.Serializable
     val method: String,
     val args: List<Expr>
 ) : Expr
+
+@Serializable data class IfStmt(
+    val branches: List<IfBranch>,
+    val elseBranch: Block?
+) : Stmt
+
+@Serializable data class IfBranch(
+    val condition: Expr,
+    val body: Block
+)
+
+@Serializable data class Unary(
+    val op: UnOp,
+    val expr: Expr
+) : Expr
+
+@Serializable enum class UnOp { Not }
 
 @Serializable data class Ident(val name: String) : Expr
 @Serializable data class IntLit(val value: Long) : Expr
