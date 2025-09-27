@@ -25,6 +25,7 @@ enum class ErrorCode(val code: String, val template: String) {
     UnsupportedBinary("E0114", "Unsupported binary operation: '${0}' between '${1}' and '${2}'"),
     UnsupportedPrintType("E0115", "Unsupported type for print: '${0}'"),
     UnsupportedConversion("E0116", "Unsupported conversion from '${0}' to '${1}'"),
+    InvalidType("E0117", "Invalid type: '${0}'"),
 
     // Codegen
     Internal("E1001", "Internal compiler error: ${0}"),
