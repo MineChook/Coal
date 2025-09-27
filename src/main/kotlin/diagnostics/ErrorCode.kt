@@ -1,4 +1,4 @@
-package codegen
+package diagnostics
 
 enum class ErrorCode(val code: String, val template: String) {
     // Lexical Errors
