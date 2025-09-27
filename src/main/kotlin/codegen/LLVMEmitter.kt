@@ -56,6 +56,7 @@ class LLVMEmitter {
                 is Assign -> lowerAssign(b, fn.name, s)
                 is ExprStmt -> valueOfExpr(b, s.expr)
                 is IfStmt -> lowerIf(b, s)
+                is WhileStmt -> lowerWhile(b, s)
             }
         }
 
@@ -169,6 +170,7 @@ class LLVMEmitter {
                     is Assign -> lowerAssign(tb, currentFn, st)
                     is ExprStmt -> valueOfExpr(tb, st.expr)
                     is IfStmt -> lowerIf(tb, st)
+                    is WhileStmt -> lowerWhile(tb, st)
                 }
             }
 
@@ -183,6 +185,7 @@ class LLVMEmitter {
                     is Assign -> lowerAssign(eb, currentFn, st)
                     is ExprStmt -> valueOfExpr(eb, st.expr)
                     is IfStmt -> lowerIf(eb, st)
+                    is WhileStmt -> lowerWhile(eb, st)
                 }
             }
 
@@ -190,6 +193,10 @@ class LLVMEmitter {
         }
 
         b.nextBlock(end)
+    }
+
+    private fun lowerWhile(b: BlockBuilder, s: WhileStmt) {
+        // TODO
     }
 
     private fun lowerMethodCall(b: BlockBuilder, m: MethodCall): RValue {

@@ -66,7 +66,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable data class WhileStmt(
     val body: Block
-)
+) : Stmt
 
 @Serializable data class Unary(
     val op: UnOp,
