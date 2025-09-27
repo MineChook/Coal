@@ -25,6 +25,8 @@ class LLVMEmitter {
         mod.declareSnprintf()
         mod.declareMalloc()
         mod.declareMemcpy()
+        mod.declareStrtol()
+        mod.declareStrtod()
 
         for(d in prog.decls) {
             when(d) {
@@ -188,52 +190,52 @@ class LLVMEmitter {
         require(m.args.isEmpty()) { "conversion methods take no arguments" }
         val recv = valueOfExpr(b, m.receiver)
 
+        fun isStringLike(v: RValue) = (v is RValue.ValueReg && v.llTy == "{ ptr, i32 }") || (v is RValue.Aggregate)
+        fun stringPtrOf(v: RValue): String = when (v) {
+            is RValue.Aggregate -> b.extractValue("{ ptr, i32 }", v.literal, 0)
+            is RValue.ValueReg -> b.extractValue("{ ptr, i32 }", v.reg, 0)
+            else -> error("expected string aggregate")
+        }
+
         return when(m.method) {
             "toString" -> when(recv) {
                 is RValue.Aggregate -> recv
                 is RValue.Immediate, is RValue.ValueReg -> numberOrCharToString(b, recv)
             }
 
-            "toInt" -> when (recv) {
-                is RValue.Aggregate, is RValue.Immediate, is RValue.ValueReg -> {
-                    val receiverLlType = when (recv) {
-                        is RValue.Immediate -> recv.llTy
-                        is RValue.ValueReg -> recv.llTy
-                        else -> ""
-                    }
-                    if (receiverLlType == "double") {
-                        // Convert float to int
-                        val intRegister = b.fptosi("double", asOperand(recv).second, "i32")
-                        RValue.ValueReg("i32", intRegister)
-                    } else if (receiverLlType == "{ ptr, i32 }") {
-                        // Convert string literal to int
-                        stringToIntIfLiteral(m.receiver)
-                    } else {
-                        error("toInt() not supported for type $receiverLlType")
-                    }
+            "toInt" -> when {
+                (recv is RValue.Immediate && recv.llTy == "double") || (recv is RValue.ValueReg && recv.llTy == "double") -> {
+                    val i = b.fptosi("double", asOperand(recv).second, "i32")
+                    RValue.ValueReg("i32", i)
                 }
+
+                m.receiver is StringLit -> stringToIntIfLiteral(m.receiver)
+                isStringLike(recv) -> {
+                    val nptr = stringPtrOf(recv)
+                    val r64 = b.call("strtol", "i64", "ptr" to nptr, "ptr" to "null", "i32" to "10")
+                    val r32 = b.trunc("i64", r64, "i32")
+                    RValue.ValueReg("i32", r32)
+                }
+
+                else -> error("toInt() not supported for type ${(if (recv is RValue.ValueReg) recv.llTy else recv::class.simpleName)}")
             }
 
-            "toFloat" -> when (recv) {
-                is RValue.Immediate, is RValue.ValueReg -> {
-                    val receiverLlType = when (recv) {
-                        is RValue.Immediate -> recv.llTy
-                        is RValue.ValueReg -> recv.llTy
-                        else -> ""
-                    }
-                    if (receiverLlType == "i32") {
-                        // Convert int to float
-                        val floatRegister = b.sitofp("i32", asOperand(recv).second, "double")
-                        RValue.ValueReg("double", floatRegister)
-                    } else if (receiverLlType == "{ ptr, i32 }") {
-                        // Convert string literal to float
-                        stringToFloatIfLiteral(m.receiver)
-                    } else {
-                        error("toFloat() not supported for type $receiverLlType")
-                    }
+            "toFloat" -> when {
+                (recv is RValue.Immediate && recv.llTy == "i32") || (recv is RValue.ValueReg && recv.llTy == "i32") -> {
+                    val f = b.sitofp("i32", asOperand(recv).second, "double")
+                    RValue.ValueReg("double", f)
                 }
-                else -> error("toFloat() supported only on int or string types")
+
+                m.receiver is StringLit -> stringToFloatIfLiteral(m.receiver)
+                isStringLike(recv) -> {
+                    val nptr = stringPtrOf(recv)
+                    val f = b.call("strtod", "double", "ptr" to nptr, "ptr" to "null")
+                    RValue.ValueReg("double", f)
+                }
+
+                else -> error("toFloat() not supported for type ${(if (recv is RValue.ValueReg) recv.llTy else recv::class.simpleName)}")
             }
+
             else -> error("unknown method ${m.method}")
         }
     }
@@ -299,7 +301,7 @@ class LLVMEmitter {
                 fun both(): Triple<String, String, String> {
                     val (lt, lo) = asOperand(lrv)
                     val (rt, ro) = asOperand(rrv)
-                    require(lt == rt) { "type mismatch in comparison: $lt vs $rt" }
+                    require(lt == rt) { "Type mismatch in comparison: $lt vs $rt" }
                     return Triple(lt, lo, ro)
                 }
 
@@ -491,7 +493,7 @@ class LLVMEmitter {
         is Binary -> {
             val lt = inferType(b, expr.left) as NamedType
             val rt = inferType(b, expr.right) as NamedType
-            require(lt == rt) { "type mismatch in binary expression: $lt vs $rt" }
+            require(lt == rt) { "Type mismatch in binary expression: $lt vs $rt" }
             when(lt.name) {
                 "int", "float" -> lt
                 "string" -> lt

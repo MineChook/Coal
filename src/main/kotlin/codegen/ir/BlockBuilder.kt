@@ -215,5 +215,11 @@ class BlockBuilder(
         return t
     }
 
+    fun trunc(fromTy: String, v: String, toTy: String): String {
+        val t = fn.nextTmp()
+        out.appendLine("  $t = trunc $fromTy $v to $toTy")
+        return t
+    }
+
     fun nextBlock(label: String): BlockBuilder = fn.block(label)
 }

@@ -23,8 +23,11 @@ jobs:
       - name: Grant execute permission for Gradle wrapper
         run: chmod +x ./gradlew
 
-      - name: Build with Gradle
-        run: ./gradlew build --stacktrace
+      - name: Verify build
+        run: ./gradlew --no-daemon assemble
+
+      - name: Run tests
+        run: ./gradlew --no-daemon test
 
       - name: Run compiler/codegen
-        run: ./gradlew run --args="-i coal/main.coal -o coal/app --keep-ll"
+        run: ./gradlew --no-daemon run --args="-i coal/main.coal -o coal/app --keep-ll"
