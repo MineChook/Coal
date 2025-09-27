@@ -3,6 +3,11 @@ package codegen
 import ast.*
 import codegen.ir.BlockBuilder
 import codegen.ir.ModuleBuilder
+import diagnostics.CoalError
+import diagnostics.Diagnostic
+import diagnostics.ErrorCode
+import diagnostics.Severity
+import diagnostics.Span
 
 class LLVMEmitter {
     private sealed interface RValue {
@@ -15,6 +20,7 @@ class LLVMEmitter {
 
     private lateinit var mod: ModuleBuilder
     private val locals = LinkedHashMap<String, LocalSlot>()
+    private val dbgGlobals = mutableListOf<String>()
     private var currentFn = ""
 
     private var labelCounter = 0
@@ -77,7 +83,7 @@ class LLVMEmitter {
         val t = b.load(llTy, slotPtr)
         val dbgName = "__dbg_${fnName}_${decl.name}"
 
-        mod.global(dbgName, llTy, zeroInit(llTy))
+        ensureDbgGlobal(dbgName, llTy)
         b.store(llTy, t, "@$dbgName")
     }
 
@@ -92,7 +98,7 @@ class LLVMEmitter {
 
         val t = b.load(slot.llTy, slot.reg)
         val dbgName = "__dbg_${fnName}_${asg.name}"
-        mod.global(dbgName, slot.llTy, zeroInit(slot.llTy))
+        ensureDbgGlobal(dbgName, slot.llTy)
         b.store(slot.llTy, t, "@$dbgName")
     }
 
@@ -620,6 +626,13 @@ class LLVMEmitter {
         is RValue.Immediate -> rv.llTy to rv.text
         is RValue.ValueReg -> rv.llTy to rv.reg
         is RValue.Aggregate -> error("cannot use aggregate as operand")
+    }
+
+    private fun ensureDbgGlobal(name: String, llTy: String) {
+        if(name !in dbgGlobals) {
+            mod.global(name, llTy, zeroInit(llTy))
+            dbgGlobals += name
+        }
     }
 
     private fun utf8Len(s: String) = s.toByteArray(Charsets.UTF_8).size

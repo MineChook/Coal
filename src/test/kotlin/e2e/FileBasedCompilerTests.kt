@@ -55,7 +55,7 @@ class FileBasedCompilerTests {
         }
 
         result.success shouldBe true
-        result.error shouldBe null
+        result.errorCode shouldBe null
         result.llvm!!.isNotBlank() shouldBe true
     }
 
@@ -65,11 +65,13 @@ class FileBasedCompilerTests {
         val expectedErrFile = path.resolveSibling("${path.nameWithoutExtension}.err")
         require(expectedErrFile.exists()) { "Missing expected error file: $expectedErrFile" }
 
-        val errNeedle = expectedErrFile.readText(StandardCharsets.UTF_8).trim()
-        errNeedle.isNotBlank() shouldBe true
+        val lines = Files.readAllLines(expectedErrFile, StandardCharsets.UTF_8)
+        val expectedCode = lines.first().trim()
+        val needles = lines.drop(1).map(String::trim).filter { it.isNotEmpty() }
 
         val result = CompilerFacade.compileToLLVM(path, null)
         result.success shouldBe false
-        result.stderr shouldContain errNeedle
+        result.errorCode shouldBe expectedCode
+        needles.forEach { needle -> result.stderr shouldContain needle }
     }
 }

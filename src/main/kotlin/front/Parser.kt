@@ -1,8 +1,13 @@
 package front
 
 import ast.*
+import diagnostics.CoalError
+import diagnostics.Diagnostic
+import diagnostics.ErrorCode
+import diagnostics.Severity
 
 class Parser(
+    private val sourceText: String,
     private val tokens: List<Token>,
     private val fileName: String = "<stdin>"
 ) {
@@ -19,23 +24,23 @@ class Parser(
     }
 
     private fun parseFnDecl(): FnDecl {
-        consume(TokenKind.Fn, "expected 'fn'")
-        val name = consumeIdent("expected function name")
-        consume(TokenKind.LParen, "expected '(' after function name")
-        consume(TokenKind.RParen, "expected ')' after '('")
+        consume(TokenKind.Fn, ErrorCode.ExpectedToken)
+        val name = consumeIdent(ErrorCode.ExpectedToken)
+        consume(TokenKind.LParen, ErrorCode.ExpectedToken)
+        consume(TokenKind.RParen, ErrorCode.ExpectedToken)
 
         val body = parseBlock()
         return FnDecl(name, emptyList(), null, body)
     }
 
     private fun parseBlock(): Block {
-        consume(TokenKind.LBrace, "expected '{' to start block")
+        consume(TokenKind.LBrace, ErrorCode.ExpectedToken)
         val stmts = mutableListOf<Stmt>()
         while(!check(TokenKind.RBrace) && !check(TokenKind.EOF)) {
             stmts += parseStmt()
         }
 
-        consume(TokenKind.RBrace, "expected '}' to end block")
+        consume(TokenKind.RBrace, ErrorCode.ExpectedToken)
         return Block(stmts)
     }
 
@@ -57,10 +62,10 @@ class Parser(
     private fun parseVarDecl(): VarDecl {
         val isConst = match(TokenKind.Const)
         if(!isConst) {
-            consume(TokenKind.Var, "expected 'var' or 'const'")
+            consume(TokenKind.Var, ErrorCode.ExpectedToken)
         }
 
-        val name = consumeIdent("expected variable name")
+        val name = consumeIdent(ErrorCode.ExpectedToken)
 
         var annotated: TypeRef? = null
         if(match(TokenKind.Colon)) {
@@ -73,17 +78,17 @@ class Parser(
         }
 
         if(isConst && init == null) {
-            errorHere("const variable '$name' must be initialized")
+            errorHere(ErrorCode.ConstNeedsInit)
         }
 
         if(init == null && annotated == null) {
-            errorHere("variable '$name' needs a type if not initialized")
+            errorHere(ErrorCode.VarNeedsType)
         }
 
         if(init != null && annotated != null) {
             val initTy = try { inferType(init) } catch(_: RuntimeException) { null }
             if(initTy != null && initTy != annotated) {
-                errorHere("type mismatch: cannot assign '${initTy}' to variable '$name' of type '${annotated}'")
+                errorHere(ErrorCode.CompareTypeMismatch)
             }
         }
 
@@ -92,7 +97,7 @@ class Parser(
     }
 
     private fun parseAssignStmt(): Stmt {
-        val name = consumeIdent("expected identifier")
+        val name = consumeIdent(ErrorCode.ExpectedToken)
         val opToken = peek()
 
         val isPlusEq = check(TokenKind.PlusEqual)
@@ -100,33 +105,33 @@ class Parser(
             advance()
             val rhs = parseExpr()
             if(name in constVars) {
-                errorHere("cannot assign to const variable '$name'")
+                errorHere(ErrorCode.AssignToConst)
             }
 
             return Assign(name, Binary(BinOp.Add, Ident(name), rhs))
         }
 
-        consume(TokenKind.Equal, "expected '=' in assignment")
+        consume(TokenKind.Equal, ErrorCode.ExpectedToken)
         val value = parseExpr()
         if(name in constVars) {
-            errorHere("cannot assign to const variable '$name'")
+            errorHere(ErrorCode.AssignToConst)
         }
 
         return Assign(name, value)
     }
 
     private fun parseIfStmt(): Stmt {
-        consume(TokenKind.If, "expected 'if'")
-        consume(TokenKind.LParen, "expected '(' after 'if'")
+        consume(TokenKind.If, ErrorCode.ExpectedToken)
+        consume(TokenKind.LParen, ErrorCode.ExpectedToken)
         val cond0 = parseExpr()
-        consume(TokenKind.RParen, "expected ')' after condition")
+        consume(TokenKind.RParen, ErrorCode.ExpectedToken)
         val then0 = parseBlock()
 
         val branches = mutableListOf(IfBranch(cond0, then0))
         while(match(TokenKind.Elif)) {
-            consume(TokenKind.LParen, "expected '(' after 'elif'")
+            consume(TokenKind.LParen, ErrorCode.ExpectedToken)
             val c = parseExpr()
-            consume(TokenKind.RParen, "expected ')' after condition")
+            consume(TokenKind.RParen, ErrorCode.ExpectedToken)
             val b = parseBlock()
             branches += IfBranch(c, b)
         }
@@ -142,8 +147,8 @@ class Parser(
             match(TokenKind.KwBool) -> "bool"
             match(TokenKind.KwChar) -> "char"
             match(TokenKind.KwString) -> "string"
-            check(TokenKind.Identifier) -> consumeIdent("expected type name")
-            else -> errorHere("expected type")
+            check(TokenKind.Identifier) -> consumeIdent(ErrorCode.ExpectedToken)
+            else -> errorHere(ErrorCode.VarNeedsType)
         }
 
         return NamedType(t)
@@ -159,7 +164,7 @@ class Parser(
         is Unary -> when(expr.op) {
             UnOp.Not -> {
                 val t = inferType(expr.expr)
-                require(t == NamedType("bool")) { errorHere("operator '!' expects bool") }
+                require(t == NamedType("bool")) { errorHere(ErrorCode.NotConditionBool) }
                 NamedType("bool")
             }
         }
@@ -169,7 +174,7 @@ class Parser(
                 val lt = inferType(expr.left)
                 val rt = inferType(expr.right)
                 require(lt == NamedType("bool") && rt == NamedType("bool")) {
-                    errorHere("operator '&&' and '||' expects bool operands")
+                    errorHere(ErrorCode.LogicNeedsBool)
                 }
 
                 NamedType("bool")
@@ -178,11 +183,11 @@ class Parser(
             BinOp.Eq, BinOp.Ne, BinOp.Lt, BinOp.Le, BinOp.Gt, BinOp.Ge -> {
                 val lt = inferType(expr.left) as NamedType
                 val rt = inferType(expr.right) as NamedType
-                require(lt == rt) { errorHere("Type mismatch: cannot compare '${lt}' with '${rt}'") }
+                require(lt == rt) { errorHere(ErrorCode.CompareTypeMismatch) }
                 when(expr.op) {
                     BinOp.Eq, BinOp.Ne -> NamedType("bool")
                     else -> {
-                        require(lt.name in listOf("int", "float", "char")) { errorHere("Relational operators can only be applied to int, float, or char") }
+                        require(lt.name in listOf("int", "float", "char")) { errorHere(ErrorCode.RelopTypeInvalid) }
                         NamedType("bool")
                     }
                 }
@@ -191,19 +196,19 @@ class Parser(
             else -> {
                 val lt = inferType(expr.left) as NamedType
                 val rt = inferType(expr.right) as NamedType
-                require(lt == rt) { errorHere("Type mismatch: cannot operate '${lt}' with '${rt}'") }
-                require(lt.name in listOf("int", "float", "string")) { errorHere("Invalid types for binary expression: '${lt}'") }
+                require(lt == rt) { errorHere(ErrorCode.CompareTypeMismatch) }
+                require(lt.name in listOf("int", "float", "string")) { errorHere(ErrorCode.InvalidType) }
 
                 lt
             }
         }
 
-        is Ident, is Call -> errorHere("cannot infer type of expression")
+        is Ident, is Call -> errorHere(ErrorCode.CannotInferType)
         is MethodCall -> when(expr.method) {
             "toString" -> NamedType("string")
             "toInt" -> NamedType("int")
             "toFloat" -> NamedType("float")
-            else -> errorHere("unknown method '${expr.method}'")
+            else -> errorHere(ErrorCode.UnknownMethod)
         }
     }
 
@@ -255,8 +260,8 @@ class Parser(
     private fun parsePostfix(): Expr {
         var expr = parsePrimary()
         while(match(TokenKind.Dot)) {
-            val method = consumeIdent("expected method name after '.'")
-            consume(TokenKind.LParen, "expected '(' after method name")
+            val method = consumeIdent(ErrorCode.ExpectedToken)
+            consume(TokenKind.LParen, ErrorCode.ExpectedToken)
             val args = mutableListOf<Expr>()
             if(!check(TokenKind.RParen)) {
                 do {
@@ -264,7 +269,7 @@ class Parser(
                 } while(match(TokenKind.Comma))
             }
 
-            consume(TokenKind.RParen, "expected ')' after arguments")
+            consume(TokenKind.RParen, ErrorCode.ExpectedToken)
             expr = MethodCall(expr, method, args)
         }
 
@@ -290,7 +295,7 @@ class Parser(
                         } while(match(TokenKind.Comma))
                     }
 
-                    consume(TokenKind.RParen, "expected ')' after arguments")
+                    consume(TokenKind.RParen, ErrorCode.ExpectedToken)
                     Call(name, args)
                 } else {
                     Ident(name)
@@ -300,23 +305,23 @@ class Parser(
             is TokenKind.LParen -> {
                 advance()
                 val e = parseExpr()
-                consume(TokenKind.RParen, "expected ')'")
+                consume(TokenKind.RParen, ErrorCode.ExpectedToken)
                 e
             }
 
-            else -> errorHere("expected expression")
+            else -> errorHere(ErrorCode.ExpectedExpr)
         }
     }
 
     // helpers
-    private fun consume(kind: TokenKind, msg: String): Token {
+    private fun consume(kind: TokenKind, error: ErrorCode): Token {
         if(check(kind)) return advance()
-        errorHere(msg)
+        errorHere(error)
     }
 
-    private fun consumeIdent(msg: String): String {
+    private fun consumeIdent(error: ErrorCode): String {
         if(check(TokenKind.Identifier)) return advance().lexeme
-        errorHere(msg)
+        errorHere(error)
     }
 
     private fun match(kind: TokenKind): Boolean {
@@ -332,10 +337,8 @@ class Parser(
     private fun peek(): Token = tokens[i]
     private fun advance(): Token = tokens[i++]
 
-    private fun errorHere(message: String): Nothing {
-        val token = peek()
-        val where = "$fileName:${token.span.line}:${token.span.col}"
-        throw RuntimeException("$where: $message (found '${token.kind}')")
+    private fun errorHere(error: ErrorCode): Nothing {
+        throw CoalError(Diagnostic(Severity.ERROR, error, fileName, peek().span, listOf(error.template)))
     }
 
     private fun precedenceOf(kind: TokenKind): Int = when(kind) {
@@ -364,7 +367,7 @@ class Parser(
         is TokenKind.GtEq -> BinOp.Ge
         is TokenKind.AndAnd -> BinOp.And
         is TokenKind.OrOr -> BinOp.Or
-        else -> errorHere("invalid binary operator: '$kind'")
+        else -> errorHere(ErrorCode.UnsupportedBinary)
     }
 
     private fun peekNextIsAssignOp(): Boolean {

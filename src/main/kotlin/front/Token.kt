@@ -1,5 +1,7 @@
 package front
 
+import diagnostics.Span
+
 sealed class TokenKind {
     // KEYWORDS
     data object Fn : TokenKind()
@@ -56,7 +58,6 @@ sealed class TokenKind {
     override fun toString(): String = this::class.simpleName ?: super.toString()
 }
 
-data class Span(val start: Int, val end: Int, val line: Int, val col: Int)
 data class Token(
     val kind: TokenKind,
     val lexeme: String,

@@ -56,7 +56,7 @@ fun main(argv: Array<String>) {
             return
         }
 
-        val program: Program = Parser(tokens, inputPath.fileName.toString()).parseProgram()
+        val program: Program = Parser(source, tokens, inputPath.fileName.toString()).parseProgram()
         if(args.emitAst) {
             val json = Json { prettyPrint = true; classDiscriminator = "kind" }
             println(json.encodeToString(Program.serializer(), program))
