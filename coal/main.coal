@@ -1,16 +1,4 @@
 fn main() {
     var x = 5
-
-    if(x == 5 && !(x == 4) || false) {
-        println("5 = 5")
-    } elif(x != 5 && x < 10) {
-        println("this wont appear")
-    } else {
-        println("else")
-    }
-
-    var a = false
-    var b = true
-    if(a && (println("never runs") == 0)) { }
-    if(b || (println("also skipped") == 0)) { }
+    x = 4
 }
