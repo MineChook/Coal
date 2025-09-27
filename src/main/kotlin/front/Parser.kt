@@ -3,6 +3,7 @@ package front
 import ast.*
 
 class Parser(
+    private val sourceText: String,
     private val tokens: List<Token>,
     private val fileName: String = "<stdin>"
 ) {
