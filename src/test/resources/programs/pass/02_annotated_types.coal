@@ -3,5 +3,5 @@ fn main() {
     var b: float = 2.5
     var c: bool = true
     var d: char = 'A'
-    vr e: string = "hi"
+    var e: string = "hi"
 }
