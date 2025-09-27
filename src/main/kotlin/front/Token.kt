@@ -1,5 +1,7 @@
 package front
 
+import diagnostics.Span
+
 sealed class TokenKind {
     // KEYWORDS
     data object Fn : TokenKind()

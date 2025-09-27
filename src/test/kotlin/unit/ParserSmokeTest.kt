@@ -19,6 +19,6 @@ class ParserSmokeTest {
         val toks = Lexer(src, "<mem>").lex()
         toks.shouldNotBeEmpty()
 
-        val ast = Parser(toks, "<mem>").parseProgram()
+        val ast = Parser(src, toks, "<mem>").parseProgram()
     }
 }

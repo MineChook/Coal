@@ -3,6 +3,11 @@ package codegen
 import ast.*
 import codegen.ir.BlockBuilder
 import codegen.ir.ModuleBuilder
+import diagnostics.CoalError
+import diagnostics.Diagnostic
+import diagnostics.ErrorCode
+import diagnostics.Severity
+import diagnostics.Span
 
 class LLVMEmitter {
     private sealed interface RValue {
