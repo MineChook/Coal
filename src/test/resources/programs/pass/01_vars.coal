@@ -1,0 +1,6 @@
+fn main() {
+    var x: int = 5
+    var y = 10
+    var z: int
+    z = x + y
+}

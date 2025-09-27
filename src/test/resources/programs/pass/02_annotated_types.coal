@@ -1,0 +1,7 @@
+fn main() {
+    var a: int = 1
+    var b: float = 2.5
+    var c: bool = true
+    var d: char = 'A'
+    vr e: string = "hi"
+}

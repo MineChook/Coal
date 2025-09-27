@@ -1,0 +1,6 @@
+fn main() {
+    var t = true
+    var f = false
+    if(t && !f) { }
+    if(t || f) { }
+}
