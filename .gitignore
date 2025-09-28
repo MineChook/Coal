@@ -51,4 +51,4 @@ bin/
 
 # For development
 coal/main
-
+coal/main.exe # for Windows
