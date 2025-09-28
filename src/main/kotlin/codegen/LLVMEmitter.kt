@@ -199,10 +199,14 @@ class LLVMEmitter {
         val end = fresh("while_end")
         val body = fresh("while_body")
 
-        val rv = valueOfExpr(b, s.condition)
-        val (ty, op) = asOperand(rv)
-        require(ty == "i1") { "while condition must be a boolean, got $ty" }
-        b.brCond("i1", op, body, end)
+        fun condTo(thenLabel: String, elseLabel: String) {
+            val rv = valueOfExpr(b, s.condition)
+            val (ty, op) = asOperand(rv)
+            require(ty == "i1") { "while condition must be a boolean, got $ty" }
+            b.brCond("i1", op, thenLabel, elseLabel)
+        }
+
+        condTo(body, end)
 
         val tb = b.nextBlock(body)
         s.body.stmts.forEach { st ->
@@ -214,6 +218,8 @@ class LLVMEmitter {
                 is WhileStmt -> lowerWhile(tb, st)
             }
         }
+
+        condTo(body, end)
 
         tb.br(end)
         b.nextBlock(end)

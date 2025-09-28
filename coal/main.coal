@@ -1,13 +1,9 @@
 fn main() {
-    var x = 5
-    x = 4
-
-//    if (x == 4) {
-//        x = 5
-//    }
-
-    while (x < 10) {
+    var x = 0
+    while (x < 20) {
         x = x + 1
-        print(x)
+        println(x)
     }
+
+    println("We're done!")
 }
