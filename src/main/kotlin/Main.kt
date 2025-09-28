@@ -63,13 +63,12 @@ fun main(argv: Array<String>) {
             return
         }
 
+        val ir = LLVMEmitter().emit(program)
         if(args.emitIR) {
-            val ir = LLVMEmitter().emit(program)
             println(ir)
             return
         }
 
-        val ir = LLVMEmitter().emit(program)
         val outPath = computeOutputBinaryPath(args, inputPath)
         val llPath =
             if(args.keepLL) {

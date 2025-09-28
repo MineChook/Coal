@@ -56,6 +56,7 @@ class LLVMEmitter {
                 is Assign -> lowerAssign(b, fn.name, s)
                 is ExprStmt -> valueOfExpr(b, s.expr)
                 is IfStmt -> lowerIf(b, s)
+                is WhileStmt -> lowerWhile(b, s)
             }
         }
 
@@ -169,6 +170,7 @@ class LLVMEmitter {
                     is Assign -> lowerAssign(tb, currentFn, st)
                     is ExprStmt -> valueOfExpr(tb, st.expr)
                     is IfStmt -> lowerIf(tb, st)
+                    is WhileStmt -> lowerWhile(tb, st)
                 }
             }
 
@@ -183,12 +185,43 @@ class LLVMEmitter {
                     is Assign -> lowerAssign(eb, currentFn, st)
                     is ExprStmt -> valueOfExpr(eb, st.expr)
                     is IfStmt -> lowerIf(eb, st)
+                    is WhileStmt -> lowerWhile(eb, st)
                 }
             }
 
             eb.br(end)
         }
 
+        b.nextBlock(end)
+    }
+
+    private fun lowerWhile(b: BlockBuilder, s: WhileStmt) {
+        val end = fresh("while_end")
+        val body = fresh("while_body")
+
+        fun condTo(thenLabel: String, elseLabel: String) {
+            val rv = valueOfExpr(b, s.condition)
+            val (ty, op) = asOperand(rv)
+            require(ty == "i1") { "while condition must be a boolean, got $ty" }
+            b.brCond("i1", op, thenLabel, elseLabel)
+        }
+
+        condTo(body, end)
+
+        val tb = b.nextBlock(body)
+        s.body.stmts.forEach { st ->
+            when(st) {
+                is VarDecl -> lowerVarDecl(tb, currentFn, st)
+                is Assign -> lowerAssign(tb, currentFn, st)
+                is ExprStmt -> valueOfExpr(tb, st.expr)
+                is IfStmt -> lowerIf(tb, st)
+                is WhileStmt -> lowerWhile(tb, st)
+            }
+        }
+
+        condTo(body, end)
+
+        tb.br(end)
         b.nextBlock(end)
     }
 

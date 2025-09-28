@@ -48,3 +48,7 @@ bin/
 *.ll
 /coal/app
 /.idea/
+
+# For development
+coal/main
+coal/main.exe # for Windows

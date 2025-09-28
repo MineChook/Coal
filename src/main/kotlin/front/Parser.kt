@@ -48,6 +48,7 @@ class Parser(
         return when {
             check(TokenKind.Var) || check(TokenKind.Const) -> parseVarDecl()
             check(TokenKind.If) -> parseIfStmt()
+            check(TokenKind.While) -> parseWhileStmt()
             check(TokenKind.Identifier) -> {
                 if(peekNextIsAssignOp()) parseAssignStmt() else ExprStmt(parseExpr())
             }
@@ -138,6 +139,17 @@ class Parser(
 
         val elseB = if(match(TokenKind.Else)) parseBlock() else null
         return IfStmt(branches, elseB)
+    }
+
+    private fun parseWhileStmt(): Stmt {
+        consume(TokenKind.While, ErrorCode.ExpectedToken)
+        consume(TokenKind.LParen, ErrorCode.ExpectedToken)
+
+        val cond = parseExpr()
+        consume(TokenKind.RParen, ErrorCode.ExpectedToken)
+
+        val body = parseBlock()
+        return WhileStmt(cond, body)
     }
 
     private fun parseTypeRef(): TypeRef {
