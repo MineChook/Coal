@@ -149,7 +149,7 @@ class Parser(
         consume(TokenKind.RParen, ErrorCode.ExpectedToken)
 
         val body = parseBlock()
-        return WhileStmt(body)
+        return WhileStmt(cond, body)
     }
 
     private fun parseTypeRef(): TypeRef {

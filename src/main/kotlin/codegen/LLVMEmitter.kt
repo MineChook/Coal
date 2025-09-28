@@ -196,7 +196,27 @@ class LLVMEmitter {
     }
 
     private fun lowerWhile(b: BlockBuilder, s: WhileStmt) {
-        // TODO
+        val end = fresh("while_end")
+        val body = fresh("while_body")
+
+        val rv = valueOfExpr(b, s.condition)
+        val (ty, op) = asOperand(rv)
+        require(ty == "i1") { "while condition must be a boolean, got $ty" }
+        b.brCond("i1", op, body, end)
+
+        val tb = b.nextBlock(body)
+        s.body.stmts.forEach { st ->
+            when(st) {
+                is VarDecl -> lowerVarDecl(tb, currentFn, st)
+                is Assign -> lowerAssign(tb, currentFn, st)
+                is ExprStmt -> valueOfExpr(tb, st.expr)
+                is IfStmt -> lowerIf(tb, st)
+                is WhileStmt -> lowerWhile(tb, st)
+            }
+        }
+
+        tb.br(end)
+        b.nextBlock(end)
     }
 
     private fun lowerMethodCall(b: BlockBuilder, m: MethodCall): RValue {

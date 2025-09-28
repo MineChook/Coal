@@ -65,6 +65,7 @@ import kotlinx.serialization.Serializable
 )
 
 @Serializable data class WhileStmt(
+    val condition: Expr,
     val body: Block
 ) : Stmt
 

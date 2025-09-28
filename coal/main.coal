@@ -2,7 +2,12 @@ fn main() {
     var x = 5
     x = 4
 
+//    if (x == 4) {
+//        x = 5
+//    }
+
     while (x < 10) {
         x = x + 1
+        print(x)
     }
 }
