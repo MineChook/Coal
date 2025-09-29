@@ -1,5 +1,8 @@
 package diagnostics
 
+/**
+ * Enum class representing various error codes and their corresponding message templates
+ */
 enum class ErrorCode(val code: String, val template: String) {
     // Lexical
     UnexpectedChar("E0001", "Unexpected character: '${0}'"),

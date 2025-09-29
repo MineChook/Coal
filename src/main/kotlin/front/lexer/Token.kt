@@ -2,6 +2,9 @@ package front.lexer
 
 import diagnostics.Span
 
+/**
+ * Holds the different kinds of tokens that can be produced by the lexer
+ */
 sealed class TokenKind {
     // KEYWORDS
     data object Fn : TokenKind()
@@ -59,6 +62,17 @@ sealed class TokenKind {
     override fun toString(): String = this::class.simpleName ?: super.toString()
 }
 
+/**
+ * The Token class representing well, a token
+ *
+ * @param kind The kind of token
+ * @param lexeme The actual text of the token
+ * @param span The span of the token in the source code
+ * @param intValue The integer value of the token, if applicable
+ * @param floatValue The float value of the token, if applicable
+ * @param charValue The character value of the token, if applicable
+ * @param stringValue The string value of the token, if applicable
+ */
 data class Token(
     val kind: TokenKind,
     val lexeme: String,

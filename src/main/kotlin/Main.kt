@@ -13,6 +13,9 @@ import kotlin.io.path.createTempFile
 import kotlin.io.path.deleteIfExists
 import kotlin.system.exitProcess
 
+/**
+ * Main entry point for the compiler
+ */
 fun main(argv: Array<String>) {
     val args = parseArgs(argv)
     val inputPath = Path.of(args.input!!)
@@ -112,6 +115,9 @@ fun main(argv: Array<String>) {
     }
 }
 
+/**
+ * Compute the output binary path based on args and input file
+ */
 private fun computeOutputBinaryPath(args: Args, inputPath: Path): Path {
     val user = args.output
     if(user != null) return Path.of(user)
@@ -123,10 +129,16 @@ private fun computeOutputBinaryPath(args: Args, inputPath: Path): Path {
     return inputPath.parent?.resolve(withExt) ?: Path.of(withExt)
 }
 
+/**
+ * Pick the C compiler to use, defaulting to clang (only clang is supported for now)
+ */
 private fun pickCompiler(ccArg: String?): String {
     return ccArg ?: "clang"
 }
 
+/**
+ * Change the extension of a path to a new one (without dot)
+ */
 private fun withExtension(p: Path, newExtNoDot: String): Path {
     val name = p.fileName.toString()
     val base = name.substringBeforeLast('.', name)

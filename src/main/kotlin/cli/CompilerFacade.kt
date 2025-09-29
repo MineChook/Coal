@@ -20,6 +20,9 @@ import java.nio.file.Path
 object CompilerFacade {
     data class Result(val success: Boolean, val llvm: String? = null, val stderr: String? = null, val errorCode: String? = null)
 
+    /**
+     * Compiles the file at [path] to LLVM IR
+     */
     fun compileToLLVM(path: Path, out: Path?): Result {
         val text = Files.readString(path)
         return try {

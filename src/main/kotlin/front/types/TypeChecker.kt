@@ -31,11 +31,26 @@ import diagnostics.Severity
 import diagnostics.Span
 import kotlin.collections.forEach
 
+/**
+ * This is the main Type Checker for Coal, once the parser is done with its work, this will be called before the code is given to LLVM.
+ * The main purpose of this is to ensure that the program is type-safe and for example strings are not added to integers
+ *
+ * @param fileName The name of the file being checked, used for error reporting
+ * @param sourceText The source text of the file being checked, used for error reporting
+ * @param types The TypeInfo object to store type information in
+ */
 class TypeChecker(
     private val fileName: String,
     private val sourceText: String,
     private val types: TypeInfo
 ) {
+    /**
+     * Holds information about a variable in the current scope
+     *
+     * @param type The type of the variable
+     * @param isConst Whether the variable is a constant
+     * @param span The span of the variable declaration, used for error reporting
+     */
     private data class VarInfo(val type: NamedType, val isConst: Boolean, val span: Span)
 
     private val env = ArrayDeque<LinkedHashMap<String, VarInfo>>()
@@ -43,6 +58,11 @@ class TypeChecker(
 
     private var currentFn: String = "<global>"
 
+    /**
+     * Checks the given program for type errors, populating the TypeInfo object with type information as it goes
+     *
+     * @param program The program to check
+     */
     fun check(program: Program) {
         program.decls.forEach { d ->
             if(d is FnDecl) functions[d.name] = emptyList<NamedType>() to NamedType("int", d.span)

@@ -6,6 +6,12 @@ import diagnostics.ErrorCode
 import diagnostics.Severity
 import diagnostics.Span
 
+/**
+ * The heart of the lexer. Takes a source string and produces a list of tokens for the parser to consume
+ *
+ * @param source The source code to lex
+ * @param fileName The name of the source file (for error reporting)
+ */
 class Lexer(
     private val source: String,
     private val fileName: String = "<stdin>"
@@ -32,6 +38,11 @@ class Lexer(
         "while" to TokenKind.While
     )
 
+    /**
+     * Lex the source code into a list of tokens
+     *
+     * @return A list of tokens
+     */
     fun lex(): List<Token> {
         while(true) {
             skipWhitespaceAndComments()

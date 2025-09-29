@@ -10,16 +10,34 @@ import diagnostics.Severity
 import diagnostics.Span
 import front.types.TypeInfo
 
+/**
+ * The main class used for emitting LLVM IR from the AST
+ *
+ * @param types The type information from the frontend
+ * @param fileName The source file name (for error reporting)
+ */
 class LLVMEmitter(
     private val types: TypeInfo,
     private val fileName: String = "<codegen>"
 ) {
+    /**
+     * An RValue represents a value computed from an expression
+     * - Immediate: A constant value (e.g., integer literal)
+     * - ValueReg: A value stored in a register
+     * - Aggregate: A composite value (e.g., string struct)
+     */
     private sealed interface RValue {
         data class Immediate(val llTy: String, val text: String) : RValue
         data class ValueReg(val llTy: String, val reg: String) : RValue
         data class Aggregate(val literal: String) : RValue
     }
 
+    /**
+     * A LocalSlot represents a local variable's storage in LLVM IR
+     *
+     * @param llTy The LLVM type of the variable
+     * @param reg The register (pointer) where the variable is stored
+     */
     private data class LocalSlot(val llTy: String, val reg: String)
 
     private lateinit var mod: ModuleBuilder
@@ -29,6 +47,12 @@ class LLVMEmitter(
 
     private var labelCounter = 0
 
+    /**
+     * Emit LLVM IR for the given program
+     *
+     * @param prog The AST of the program to compile
+     * @return The generated LLVM IR as a string
+     */
     fun emit(prog: Program): String {
         mod = ModuleBuilder()
         mod.declarePrintf()
