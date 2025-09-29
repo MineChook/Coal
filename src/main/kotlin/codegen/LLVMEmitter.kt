@@ -58,7 +58,8 @@ class LLVMEmitter(
 
         mod.declarePrintf()
         mod.declareSnprintf()
-        mod.declareScanf()
+        mod.declareFgets()
+        mod.declareStdin()
         mod.declareStrlen()
         mod.declareMalloc()
         mod.declareMemcpy()
@@ -499,6 +500,7 @@ class LLVMEmitter(
 
     private fun lowerBuiltinInput(b: BlockBuilder, args: List<Expr>): RValue {
         if(args.size != 1) ice("input() expects 1 argument, got ${args.size}", args.firstOrNull()?.span ?: Span(0,0,1,1))
+
         val prompt = valueOfExpr(b, args[0])
         val promptPtr = when(prompt) {
             is RValue.Aggregate -> b.extractValue("{ ptr, i32 }", prompt.literal, 0)
@@ -514,12 +516,16 @@ class LLVMEmitter(
         val buf = b.allocaArray(max, "i8", "inbuf")
         val bufPtr = b.gepFirst(buf, max, "i8")
 
-        val scanFmt = mod.internCString(" %1023[^\\n]")
-        val scanFmtPtr = b.gepGlobalFirst(scanFmt)
-        b.call("scanf", "i32", "ptr" to scanFmtPtr, "ptr" to bufPtr)
+        val stdinVal = b.load("ptr", "@__stdinp")
+        b.call("fgets", "ptr",
+            "ptr" to bufPtr,
+            "i32" to max.toString(),
+            "ptr" to stdinVal
+        )
 
         val len64 = b.call("strlen", "i64", "ptr" to bufPtr)
         val len32 = b.trunc("i64", len64, "i32")
+
         val cap32 = b.add("i32", len32, "1")
         val cap64 = b.zext("i32", cap32, "i64")
         val dst = b.call("malloc", "ptr", "i64" to cap64)

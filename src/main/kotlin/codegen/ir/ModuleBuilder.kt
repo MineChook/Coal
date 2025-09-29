@@ -24,8 +24,9 @@ class ModuleBuilder(
 
     fun declarePrintf() { decls.appendLine("declare i32 @printf(ptr, ...)") }
     fun declareSnprintf() { decls.appendLine("declare i32 @snprintf(ptr, i64, ptr, ...)") }
-    fun declareScanf() { decls.appendLine("declare i32 @scanf(ptr, ...)") }
     fun declareStrlen() { decls.appendLine("declare i64 @strlen(ptr)") }
+    fun declareFgets() { decls.appendLine("declare ptr @fgets(ptr, i32, ptr)") }
+    fun declareStdin() { globals.appendLine("@__stdinp = external global ptr") }
 
     fun declareMalloc() { decls.appendLine("declare ptr @malloc(i64)") }
     fun declareMemcpy() { decls.appendLine("declare ptr @memcpy(ptr, ptr, i64)") }
