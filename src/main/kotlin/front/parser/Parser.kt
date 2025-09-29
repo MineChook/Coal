@@ -30,6 +30,7 @@ import diagnostics.CoalError
 import diagnostics.Diagnostic
 import diagnostics.ErrorCode
 import diagnostics.Severity
+import diagnostics.Span
 import front.lexer.Token
 import front.lexer.TokenKind
 import kotlin.collections.plusAssign
@@ -39,355 +40,139 @@ class Parser(
     private val tokens: List<Token>,
     private val fileName: String = "<stdin>"
 ) {
-    private var i = 0
-    private val constVars = mutableSetOf<String>()
+    private val cur = TokenCursor(tokens, fileName)
 
     fun parseProgram(): Program {
         val decls = mutableListOf<Decl>()
-        while(!check(TokenKind.EOF)) {
-            decls plusAssign parseFnDecl()
-        }
-
+        while(!cur.atEnd()) decls += parseFnDecl()
         return Program(decls)
     }
 
     private fun parseFnDecl(): FnDecl {
-        consume(TokenKind.Fn, ErrorCode.ExpectedToken)
-        val name = consumeIdent(ErrorCode.ExpectedToken)
-        consume(TokenKind.LParen, ErrorCode.ExpectedToken)
-        consume(TokenKind.RParen, ErrorCode.ExpectedToken)
-
+        val fnTok = cur.expect(TokenKind.Fn, ErrorCode.ExpectedToken)
+        val nameTok = cur.expectIdent(ErrorCode.ExpectedToken)
+        cur.expect(TokenKind.LParen, ErrorCode.ExpectedToken)
+        //TODO: Expand later for parameters
+        cur.expect(TokenKind.RParen, ErrorCode.ExpectedToken)
         val body = parseBlock()
-        return FnDecl(name, emptyList(), null, body)
+
+        return FnDecl(nameTok.lexeme, emptyList(), null, body, Span.merge(fnTok.span, body.span))
     }
 
     private fun parseBlock(): Block {
-        consume(TokenKind.LBrace, ErrorCode.ExpectedToken)
+        val l = cur.expect(TokenKind.LBrace, ErrorCode.ExpectedToken)
         val stmts = mutableListOf<Stmt>()
-        while(!check(TokenKind.RBrace) && !check(TokenKind.EOF)) {
-            stmts plusAssign parseStmt()
-        }
+        while(!cur.check(TokenKind.RBrace) && !cur.atEnd()) stmts += parseStmt()
+        val r = cur.expect(TokenKind.RBrace, ErrorCode.ExpectedToken)
 
-        consume(TokenKind.RBrace, ErrorCode.ExpectedToken)
-        return Block(stmts)
+        return Block(stmts, Span.merge(l.span, r.span))
     }
 
     private fun parseStmt(): Stmt {
         return when {
-            check(TokenKind.Var) || check(TokenKind.Const) -> parseVarDecl()
-            check(TokenKind.If) -> parseIfStmt()
-            check(TokenKind.While) -> parseWhileStmt()
-            check(TokenKind.Identifier) -> {
-                if(peekNextIsAssignOp()) parseAssignStmt() else ExprStmt(parseExpr())
+            cur.check(TokenKind.Var) || cur.check(TokenKind.Const) -> parseVarDecl()
+            cur.check(TokenKind.If) -> parseIfStmt()
+            cur.check(TokenKind.While) -> parseWhileStmt()
+            cur.check(TokenKind.Identifier) -> {
+                if(cur.lookaheadIsAssignOp()) parseAssignStmt()
+                else {
+                    val e = parseExpr()
+                    ExprStmt(e, e.span)
+                }
             }
 
             else -> {
                 val e = parseExpr()
-                ExprStmt(e)
+                ExprStmt(e, e.span)
             }
         }
     }
 
     private fun parseVarDecl(): VarDecl {
-        val isConst = match(TokenKind.Const)
-        if(!isConst) {
-            consume(TokenKind.Var, ErrorCode.ExpectedToken)
+        val isConst = cur.match(TokenKind.Const).also {
+            if(!it) cur.expect(TokenKind.Var, ErrorCode.ExpectedToken)
         }
 
-        val name = consumeIdent(ErrorCode.ExpectedToken)
-
+        val nameTok = cur.expectIdent(ErrorCode.ExpectedToken)
         var annotated: TypeRef? = null
-        if(match(TokenKind.Colon)) {
-            annotated = parseTypeRef()
-        }
+        if(cur.match(TokenKind.Colon)) annotated = parseTypeRef()
 
         var init: Expr? = null
-        if(match(TokenKind.Equal)) {
-            init = parseExpr()
-        }
+        val eqTok = if(cur.match(TokenKind.Equal)) tokens[(cur.i - 1).coerceAtLeast(0)] else null
+        if(eqTok != null) init = parseExpr()
 
-        if(isConst && init == null) {
-            errorHere(ErrorCode.ConstNeedsInit)
-        }
+        val start = (annotated?.span ?: nameTok.span)
+        val end = (init?.span ?: nameTok.span)
+        val sp = Span.merge(start, end)
 
-        if(init == null && annotated == null) {
-            errorHere(ErrorCode.VarNeedsType)
-        }
-
-        if(init != null && annotated != null) {
-            val initTy = try { inferType(init) } catch(_: RuntimeException) { null }
-            if(initTy != null && initTy != annotated) {
-                errorHere(ErrorCode.CompareTypeMismatch)
-            }
-        }
-
-        if(isConst) constVars.add(name)
-        return VarDecl(name, annotated, init, isConst)
+        return VarDecl(nameTok.lexeme, annotated, init, isConst, sp)
     }
 
     private fun parseAssignStmt(): Stmt {
-        val name = consumeIdent(ErrorCode.ExpectedToken)
-        val opToken = peek()
+        val nameTok = cur.expectIdent(ErrorCode.ExpectedToken)
+        val start = nameTok.span
 
-        val isPlusEq = check(TokenKind.PlusEqual)
-        if(isPlusEq) {
-            advance()
+        if(cur.match(TokenKind.PlusEqual)) {
             val rhs = parseExpr()
-            if(name in constVars) {
-                errorHere(ErrorCode.AssignToConst)
-            }
-
-            return Assign(name, Binary(BinOp.Add, Ident(name), rhs))
+            val bin = Binary(BinOp.Add, Ident(nameTok.lexeme, nameTok.span), rhs, Span.merge(start, rhs.span))
+            return Assign(nameTok.lexeme, bin, Span.merge(start, rhs.span))
         }
 
-        consume(TokenKind.Equal, ErrorCode.ExpectedToken)
+        cur.expect(TokenKind.Equal, ErrorCode.ExpectedToken)
         val value = parseExpr()
-        if(name in constVars) {
-            errorHere(ErrorCode.AssignToConst)
-        }
-
-        return Assign(name, value)
+        return Assign(nameTok.lexeme, value, Span.merge(start, value.span))
     }
 
     private fun parseIfStmt(): Stmt {
-        consume(TokenKind.If, ErrorCode.ExpectedToken)
-        consume(TokenKind.LParen, ErrorCode.ExpectedToken)
+        val ifTok = cur.expect(TokenKind.If, ErrorCode.ExpectedToken)
+        cur.expect(TokenKind.LParen, ErrorCode.ExpectedToken)
         val cond0 = parseExpr()
-        consume(TokenKind.RParen, ErrorCode.ExpectedToken)
+        cur.expect(TokenKind.RParen, ErrorCode.ExpectedToken)
         val then0 = parseBlock()
+        val branches = mutableListOf(IfBranch(cond0, then0, Span.merge(cond0.span, then0.span)))
 
-        val branches = mutableListOf(IfBranch(cond0, then0))
-        while(match(TokenKind.Elif)) {
-            consume(TokenKind.LParen, ErrorCode.ExpectedToken)
+        while(cur.match(TokenKind.Elif)) {
+            cur.expect(TokenKind.LParen, ErrorCode.ExpectedToken)
             val c = parseExpr()
-            consume(TokenKind.RParen, ErrorCode.ExpectedToken)
+            cur.expect(TokenKind.RParen, ErrorCode.ExpectedToken)
             val b = parseBlock()
-            branches plusAssign IfBranch(c, b)
+            branches += IfBranch(c, b, Span.merge(c.span, b.span))
         }
 
-        val elseB = if(match(TokenKind.Else)) parseBlock() else null
-        return IfStmt(branches, elseB)
+        val elseB = if(cur.match(TokenKind.Else)) parseBlock() else null
+        val endSpan = elseB?.span ?: branches.last().span
+        return IfStmt(branches, elseB, Span.merge(ifTok.span, endSpan))
     }
 
     private fun parseWhileStmt(): Stmt {
-        consume(TokenKind.While, ErrorCode.ExpectedToken)
-        consume(TokenKind.LParen, ErrorCode.ExpectedToken)
-
+        val whileTok = cur.expect(TokenKind.While, ErrorCode.ExpectedToken)
+        cur.expect(TokenKind.LParen, ErrorCode.ExpectedToken)
         val cond = parseExpr()
-        consume(TokenKind.RParen, ErrorCode.ExpectedToken)
-
+        cur.expect(TokenKind.RParen, ErrorCode.ExpectedToken)
         val body = parseBlock()
-        return WhileStmt(cond, body)
+
+        return WhileStmt(cond, body, Span.merge(whileTok.span, body.span))
     }
 
     private fun parseTypeRef(): TypeRef {
         val t = when {
-            match(TokenKind.KwInt) -> "int"
-            match(TokenKind.KwFloat) -> "float"
-            match(TokenKind.KwBool) -> "bool"
-            match(TokenKind.KwChar) -> "char"
-            match(TokenKind.KwString) -> "string"
-            check(TokenKind.Identifier) -> consumeIdent(ErrorCode.ExpectedToken)
-            else -> errorHere(ErrorCode.VarNeedsType)
+            cur.match(TokenKind.KwInt) -> NamedType("int", tokens[cur.i - 1].span)
+            cur.match(TokenKind.KwFloat) -> NamedType("float", tokens[cur.i - 1].span)
+            cur.match(TokenKind.KwBool) -> NamedType("bool", tokens[cur.i - 1].span)
+            cur.match(TokenKind.KwChar) -> NamedType("char", tokens[cur.i - 1].span)
+            cur.match(TokenKind.KwString) -> NamedType("string", tokens[cur.i - 1].span)
+            cur.check(TokenKind.Identifier) -> {
+                val id = cur.expectIdent(ErrorCode.ExpectedToken)
+                NamedType(id.lexeme, id.span)
+            }
+
+            else -> cur.errorHere(ErrorCode.VarNeedsType, listOf("<type>"))
         }
 
-        return NamedType(t)
+        return t
     }
 
-    private fun inferType(expr: Expr): TypeRef = when(expr) {
-        is IntLit -> NamedType("int")
-        is FloatLit -> NamedType("float")
-        is BoolLit -> NamedType("bool")
-        is CharLit -> NamedType("char")
-        is StringLit -> NamedType("string")
-
-        is Unary -> when(expr.op) {
-            UnOp.Not -> {
-                val t = inferType(expr.expr)
-                require(t == NamedType("bool")) { errorHere(ErrorCode.NotConditionBool) }
-                NamedType("bool")
-            }
-        }
-
-        is Binary -> when(expr.op) {
-            BinOp.And, BinOp.Or -> {
-                val lt = inferType(expr.left)
-                val rt = inferType(expr.right)
-                require(lt == NamedType("bool") && rt == NamedType("bool")) {
-                    errorHere(ErrorCode.LogicNeedsBool)
-                }
-
-                NamedType("bool")
-            }
-
-            BinOp.Eq, BinOp.Ne, BinOp.Lt, BinOp.Le, BinOp.Gt, BinOp.Ge -> {
-                val lt = inferType(expr.left) as NamedType
-                val rt = inferType(expr.right) as NamedType
-                require(lt == rt) { errorHere(ErrorCode.CompareTypeMismatch) }
-                when(expr.op) {
-                    BinOp.Eq, BinOp.Ne -> NamedType("bool")
-                    else -> {
-                        require(lt.name in listOf("int", "float", "char")) { errorHere(ErrorCode.RelopTypeInvalid) }
-                        NamedType("bool")
-                    }
-                }
-            }
-
-            else -> {
-                val lt = inferType(expr.left) as NamedType
-                val rt = inferType(expr.right) as NamedType
-                require(lt == rt) { errorHere(ErrorCode.CompareTypeMismatch) }
-                require(lt.name in listOf("int", "float", "string")) { errorHere(ErrorCode.InvalidType) }
-
-                lt
-            }
-        }
-
-        is Ident, is Call -> errorHere(ErrorCode.CannotInferType)
-        is MethodCall -> when(expr.method) {
-            "toString" -> NamedType("string")
-            "toInt" -> NamedType("int")
-            "toFloat" -> NamedType("float")
-            else -> errorHere(ErrorCode.UnknownMethod)
-        }
-    }
-
-    private fun parseExpr(): Expr = parseBinaryExpr(0)
-
-    private fun parseBinaryExpr(minPrec: Int): Expr {
-        var lhs = parseUnary()
-        while(true) {
-            val tok = peek()
-            val prec = precedenceOf(tok.kind)
-            if (prec < minPrec) break
-
-            val opTok = advance()
-            var rhs = parseUnary()
-
-            while(true) {
-                val nextTok = peek()
-                val nextPrec = precedenceOf(nextTok.kind)
-                if(nextPrec > prec) {
-                    val op2 = advance()
-                    var rhs2 = parseUnary()
-
-                    while(true) {
-                        val afterTok = peek()
-                        val afterPrec = precedenceOf(afterTok.kind)
-                        if(afterPrec > precedenceOf(op2.kind)) {
-                            rhs2 = parseBinaryExpr(afterPrec)
-                        } else break
-                    }
-
-                    rhs = Binary(binOpOf(op2.kind), rhs, rhs2)
-                } else break
-            }
-
-            lhs = Binary(binOpOf(opTok.kind), lhs, rhs)
-        }
-
-        return lhs
-    }
-
-    private fun parseUnary(): Expr {
-        return if(match(TokenKind.Bang)) {
-            Unary(UnOp.Not, parseUnary())
-        } else {
-            parsePostfix()
-        }
-    }
-
-    private fun parsePostfix(): Expr {
-        var expr = parsePrimary()
-        while(match(TokenKind.Dot)) {
-            val method = consumeIdent(ErrorCode.ExpectedToken)
-            consume(TokenKind.LParen, ErrorCode.ExpectedToken)
-            val args = mutableListOf<Expr>()
-            if(!check(TokenKind.RParen)) {
-                do {
-                    args += parseExpr()
-                } while(match(TokenKind.Comma))
-            }
-
-            consume(TokenKind.RParen, ErrorCode.ExpectedToken)
-            expr = MethodCall(expr, method, args)
-        }
-
-        return expr
-    }
-
-    private fun parsePrimary(): Expr {
-        val t = peek()
-        return when (t.kind) {
-            is TokenKind.IntLiteral -> { advance(); IntLit(t.intValue!!)
-            }
-            is TokenKind.FloatLiteral -> { advance(); FloatLit(t.floatValue!!)
-            }
-            is TokenKind.True -> { advance(); BoolLit(true)
-            }
-            is TokenKind.False -> { advance(); BoolLit(false)
-            }
-            is TokenKind.CharLiteral -> { advance(); CharLit(t.charValue!!)
-            }
-            is TokenKind.StringLiteral -> { advance(); StringLit(t.stringValue!!)
-            }
-            is TokenKind.Identifier -> {
-                val name = advance().lexeme
-                if(match(TokenKind.LParen)) {
-                    val args = mutableListOf<Expr>()
-                    if(!check(TokenKind.RParen)) {
-                        do {
-                            args += parseExpr()
-                        } while(match(TokenKind.Comma))
-                    }
-
-                    consume(TokenKind.RParen, ErrorCode.ExpectedToken)
-                    Call(name, args)
-                } else {
-                    Ident(name)
-                }
-            }
-
-            is TokenKind.LParen -> {
-                advance()
-                val e = parseExpr()
-                consume(TokenKind.RParen, ErrorCode.ExpectedToken)
-                e
-            }
-
-            else -> errorHere(ErrorCode.ExpectedExpr)
-        }
-    }
-
-    // helpers
-    private fun consume(kind: TokenKind, error: ErrorCode): Token {
-        if(check(kind)) return advance()
-        errorHere(error)
-    }
-
-    private fun consumeIdent(error: ErrorCode): String {
-        if(check(TokenKind.Identifier)) return advance().lexeme
-        errorHere(error)
-    }
-
-    private fun match(kind: TokenKind): Boolean {
-        if(check(kind)) {
-            advance()
-            return true
-        }
-
-        return false
-    }
-
-    private fun check(kind: TokenKind): Boolean = peek().kind::class == kind::class
-    private fun peek(): Token = tokens[i]
-    private fun advance(): Token = tokens[i++]
-
-    private fun errorHere(error: ErrorCode): Nothing {
-        throw CoalError(Diagnostic(Severity.ERROR, error, fileName, peek().span, listOf(error.template)))
-    }
-
-    private fun precedenceOf(kind: TokenKind): Int = when(kind) {
+    private fun precedenceOf(k: TokenKind): Int = when(k) {
         is TokenKind.OrOr -> 10
         is TokenKind.AndAnd -> 20
         is TokenKind.EqualEqual, is TokenKind.BangEqual -> 30
@@ -398,7 +183,7 @@ class Parser(
         else -> -1
     }
 
-    private fun binOpOf(kind: TokenKind): BinOp = when(kind) {
+    private fun binOpOf(k: TokenKind): BinOp = when(k) {
         is TokenKind.Plus -> BinOp.Add
         is TokenKind.Minus -> BinOp.Sub
         is TokenKind.Star -> BinOp.Mul
@@ -413,16 +198,111 @@ class Parser(
         is TokenKind.GtEq -> BinOp.Ge
         is TokenKind.AndAnd -> BinOp.And
         is TokenKind.OrOr -> BinOp.Or
-        else -> errorHere(ErrorCode.UnsupportedBinary)
+        else -> cur.errorHere(ErrorCode.UnsupportedBinary, listOf(k.toString(), "?", "?"))
     }
 
-    private fun peekNextIsAssignOp(): Boolean {
-        if(!check(TokenKind.Identifier)) return false
-        val saved = i
-        advance()
+    private fun parseExpr(): Expr = parseBinaryExpr(0)
+    private fun parseBinaryExpr(minPrec: Int): Expr {
+        var lhs = parseUnary()
+        while(true) {
+            val tok = cur.peek()
+            val prec = precedenceOf(tok.kind)
+            if(prec < minPrec) break
 
-        val isAssign = check(TokenKind.Equal) || check(TokenKind.PlusEqual)
-        i = saved
-        return isAssign
+            val opTok = cur.advance()
+            var rhs = parseUnary()
+
+            while(true) {
+                val nextTok = cur.peek()
+                val nextPrec = precedenceOf(nextTok.kind)
+                if(nextPrec > prec) {
+                    val op2 = cur.advance()
+                    var rhs2 = parseUnary()
+                    while(true) {
+                        val afterTok = cur.peek()
+                        val afterPrec = precedenceOf(afterTok.kind)
+                        if(afterPrec > precedenceOf(op2.kind)) {
+                            rhs2 = parseBinaryExpr(afterPrec)
+                        } else break
+                    }
+
+                    rhs = Binary(binOpOf(op2.kind), rhs, rhs2, Span.merge(rhs.span, rhs2.span))
+                } else break
+            }
+
+            lhs = Binary(binOpOf(opTok.kind), lhs, rhs, Span.merge(lhs.span, rhs.span))
+        }
+
+        return lhs
+    }
+
+    private fun parseUnary(): Expr =
+        if(cur.match(TokenKind.Bang)) {
+            val opTok = tokens[cur.i - 1]
+            val e = parseUnary()
+            Unary(UnOp.Not, e, Span.merge(opTok.span, e.span))
+        } else parsePostfix()
+
+    private fun parsePostfix(): Expr {
+        var expr = parsePrimary()
+        while(cur.match(TokenKind.Dot)) {
+            val dot = tokens[cur.i - 1]
+            val methodTok = cur.expectIdent(ErrorCode.ExpectedToken)
+            cur.expect(TokenKind.LParen, ErrorCode.ExpectedToken)
+            val args = mutableListOf<Expr>()
+            if(!cur.check(TokenKind.RParen)) {
+                do { args += parseExpr() } while(cur.match(TokenKind.Comma))
+            }
+
+            val rpar = cur.expect(TokenKind.RParen, ErrorCode.ExpectedToken)
+            expr = MethodCall(expr, methodTok.lexeme, args, Span.merge(expr.span, rpar.span))
+        }
+
+        return expr
+    }
+
+    private fun parsePrimary(): Expr {
+        val t = cur.peek()
+        return when(t.kind) {
+            is TokenKind.IntLiteral    -> { cur.advance(); IntLit(t.intValue!!, t.span) }
+            is TokenKind.FloatLiteral  -> { cur.advance(); FloatLit(t.floatValue!!, t.span) }
+            is TokenKind.True          -> { cur.advance(); BoolLit(true, t.span) }
+            is TokenKind.False         -> { cur.advance(); BoolLit(false, t.span) }
+            is TokenKind.CharLiteral   -> { cur.advance(); CharLit(t.charValue!!, t.span) }
+            is TokenKind.StringLiteral -> { cur.advance(); StringLit(t.stringValue!!, t.span) }
+            is TokenKind.Identifier -> {
+                val id = cur.advance()
+                if(cur.match(TokenKind.LParen)) {
+                    val args = mutableListOf<Expr>()
+                    if(!cur.check(TokenKind.RParen)) {
+                        do { args += parseExpr() } while (cur.match(TokenKind.Comma))
+                    }
+
+                    val rpar = cur.expect(TokenKind.RParen, ErrorCode.ExpectedToken)
+                    Call(id.lexeme, args, Span.merge(id.span, rpar.span))
+                } else Ident(id.lexeme, id.span)
+            }
+
+            is TokenKind.LParen -> {
+                val lpar = cur.advance()
+                val e = parseExpr()
+                val rpar = cur.expect(TokenKind.RParen, ErrorCode.ExpectedToken)
+
+                when(e) {
+                    is Binary     -> e.copy(span = Span.merge(lpar.span, rpar.span))
+                    is Unary      -> e.copy(span = Span.merge(lpar.span, rpar.span))
+                    is MethodCall -> e.copy(span = Span.merge(lpar.span, rpar.span))
+                    is Call       -> e.copy(span = Span.merge(lpar.span, rpar.span))
+                    is Ident      -> e.copy(span = Span.merge(lpar.span, rpar.span))
+                    is IntLit     -> e.copy(span = Span.merge(lpar.span, rpar.span))
+                    is FloatLit   -> e.copy(span = Span.merge(lpar.span, rpar.span))
+                    is BoolLit    -> e.copy(span = Span.merge(lpar.span, rpar.span))
+                    is CharLit    -> e.copy(span = Span.merge(lpar.span, rpar.span))
+                    is StringLit  -> e.copy(span = Span.merge(lpar.span, rpar.span))
+                }
+            }
+
+            else -> cur.errorHere(ErrorCode.ExpectedExpr)
+        }
     }
 }
