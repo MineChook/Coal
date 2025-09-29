@@ -1,17 +1,47 @@
-package front.parser
+package front.types
 
-import ast.*
-import diagnostics.*
-import kotlin.reflect.typeOf
+import ast.Assign
+import ast.BinOp
+import ast.Binary
+import ast.Block
+import ast.BoolLit
+import ast.Call
+import ast.CharLit
+import ast.Expr
+import ast.ExprStmt
+import ast.FloatLit
+import ast.FnDecl
+import ast.Ident
+import ast.IfStmt
+import ast.IntLit
+import ast.MethodCall
+import ast.NamedType
+import ast.Program
+import ast.Stmt
+import ast.StringLit
+import ast.TypeRef
+import ast.UnOp
+import ast.Unary
+import ast.VarDecl
+import ast.WhileStmt
+import diagnostics.CoalError
+import diagnostics.Diagnostic
+import diagnostics.ErrorCode
+import diagnostics.Severity
+import diagnostics.Span
+import kotlin.collections.forEach
 
 class TypeChecker(
     private val fileName: String,
-    private val sourceText: String
+    private val sourceText: String,
+    private val types: TypeInfo
 ) {
     private data class VarInfo(val type: NamedType, val isConst: Boolean, val span: Span)
 
     private val env = ArrayDeque<LinkedHashMap<String, VarInfo>>()
     private val functions = linkedMapOf<String, Pair<List<NamedType>, NamedType?>>() // name -> (params, returnType)
+
+    private var currentFn: String = "<global>"
 
     fun check(program: Program) {
         program.decls.forEach { d ->
@@ -26,9 +56,11 @@ class TypeChecker(
     }
 
     private fun checkFn(fn: FnDecl) {
+        currentFn = fn.name
         pushScope()
         checkBlock(fn.body)
         popScope()
+        currentFn = "<global>"
     }
 
     private fun checkBlock(block: Block) {
@@ -56,6 +88,7 @@ class TypeChecker(
 
                 if(stmt.isConst && stmt.init == null) error(stmt.span, ErrorCode.ConstNeedsInit, stmt.name)
                 declare(stmt.name, finalTy, stmt.isConst, stmt.span)
+                types.varTypes[currentFn to stmt.name] = finalTy
             }
 
             is Assign -> {
@@ -85,7 +118,7 @@ class TypeChecker(
     }
 
     private fun typeOf(e: Expr): NamedType {
-        return when(e) {
+        val ty = when(e) {
             is IntLit -> NamedType("int", e.span)
             is FloatLit -> NamedType("float", e.span)
             is BoolLit -> NamedType("bool", e.span)
@@ -171,6 +204,9 @@ class TypeChecker(
                 }
             }
         }
+
+        types.exprTypes[e] = ty
+        return ty
     }
 
     private fun pushScope() = env.addLast(linkedMapOf())
