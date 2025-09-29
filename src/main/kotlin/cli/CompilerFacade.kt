@@ -7,12 +7,10 @@ import diagnostics.DiagnosticRenderer
 import diagnostics.ErrorCode
 import diagnostics.Severity
 import diagnostics.Span
-import front.Lexer
-import front.Parser
+import front.lexer.Lexer
+import front.parser.Parser
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.readText
-import kotlin.io.path.writeText
 
 /**
  * Just for tests so they can run in-process

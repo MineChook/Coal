@@ -1,4 +1,4 @@
-package front
+package front.lexer
 
 import diagnostics.CoalError
 import diagnostics.Diagnostic

@@ -2,8 +2,8 @@ import ast.Program
 import cli.Args
 import cli.CLIArguments.parseArgs
 import codegen.LLVMEmitter
-import front.Lexer
-import front.Parser
+import front.lexer.Lexer
+import front.parser.Parser
 import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Path

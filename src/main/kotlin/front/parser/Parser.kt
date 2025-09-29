@@ -1,10 +1,38 @@
-package front
+package front.parser
 
-import ast.*
+import ast.Assign
+import ast.BinOp
+import ast.Binary
+import ast.Block
+import ast.BoolLit
+import ast.Call
+import ast.CharLit
+import ast.Decl
+import ast.Expr
+import ast.ExprStmt
+import ast.FloatLit
+import ast.FnDecl
+import ast.Ident
+import ast.IfBranch
+import ast.IfStmt
+import ast.IntLit
+import ast.MethodCall
+import ast.NamedType
+import ast.Program
+import ast.Stmt
+import ast.StringLit
+import ast.TypeRef
+import ast.UnOp
+import ast.Unary
+import ast.VarDecl
+import ast.WhileStmt
 import diagnostics.CoalError
 import diagnostics.Diagnostic
 import diagnostics.ErrorCode
 import diagnostics.Severity
+import front.lexer.Token
+import front.lexer.TokenKind
+import kotlin.collections.plusAssign
 
 class Parser(
     private val sourceText: String,
@@ -17,7 +45,7 @@ class Parser(
     fun parseProgram(): Program {
         val decls = mutableListOf<Decl>()
         while(!check(TokenKind.EOF)) {
-            decls += parseFnDecl()
+            decls plusAssign parseFnDecl()
         }
 
         return Program(decls)
@@ -37,7 +65,7 @@ class Parser(
         consume(TokenKind.LBrace, ErrorCode.ExpectedToken)
         val stmts = mutableListOf<Stmt>()
         while(!check(TokenKind.RBrace) && !check(TokenKind.EOF)) {
-            stmts += parseStmt()
+            stmts plusAssign parseStmt()
         }
 
         consume(TokenKind.RBrace, ErrorCode.ExpectedToken)
@@ -134,7 +162,7 @@ class Parser(
             val c = parseExpr()
             consume(TokenKind.RParen, ErrorCode.ExpectedToken)
             val b = parseBlock()
-            branches += IfBranch(c, b)
+            branches plusAssign IfBranch(c, b)
         }
 
         val elseB = if(match(TokenKind.Else)) parseBlock() else null
@@ -291,12 +319,18 @@ class Parser(
     private fun parsePrimary(): Expr {
         val t = peek()
         return when (t.kind) {
-            is TokenKind.IntLiteral -> { advance(); IntLit(t.intValue!!) }
-            is TokenKind.FloatLiteral -> { advance(); FloatLit(t.floatValue!!) }
-            is TokenKind.True -> { advance(); BoolLit(true) }
-            is TokenKind.False -> { advance(); BoolLit(false) }
-            is TokenKind.CharLiteral -> { advance(); CharLit(t.charValue!!) }
-            is TokenKind.StringLiteral -> { advance(); StringLit(t.stringValue!!) }
+            is TokenKind.IntLiteral -> { advance(); IntLit(t.intValue!!)
+            }
+            is TokenKind.FloatLiteral -> { advance(); FloatLit(t.floatValue!!)
+            }
+            is TokenKind.True -> { advance(); BoolLit(true)
+            }
+            is TokenKind.False -> { advance(); BoolLit(false)
+            }
+            is TokenKind.CharLiteral -> { advance(); CharLit(t.charValue!!)
+            }
+            is TokenKind.StringLiteral -> { advance(); StringLit(t.stringValue!!)
+            }
             is TokenKind.Identifier -> {
                 val name = advance().lexeme
                 if(match(TokenKind.LParen)) {

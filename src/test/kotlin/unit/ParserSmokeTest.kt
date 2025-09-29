@@ -1,7 +1,7 @@
 package unit
 
-import front.Lexer
-import front.Parser
+import front.lexer.Lexer
+import front.parser.Parser
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import org.junit.jupiter.api.Test
 
