@@ -1,16 +1,18 @@
 package diagnostics
 
 enum class ErrorCode(val code: String, val template: String) {
-    // Lexical Errors
+    // Lexical
     UnexpectedChar("E0001", "Unexpected character: '${0}'"),
     UnterminatedString("E0002", "Unterminated string literal"),
     UnterminatedChar("E0003", "Unterminated character literal"),
     UnknownEscapeSequence("E0004", "Unknown escape sequence: '\\${0}'"),
     EmptyCharLiteral("E0005", "Empty character literal"),
 
-    // Parsing/typing Errors
+    // Parsing
     ExpectedToken("E0101", "Expected token: '${0}', but found: '${1}'"),
     ExpectedExpr("E0102", "Expected an expression"),
+
+    // Typing / semantics
     AssignToConst("E0103", "Cannot assign to constant variable: '${0}'"),
     ConstNeedsInit("E0104", "Constant variable '${0}' must be initialized"),
     VarNeedsType("E0105", "Variable '${0}' must have an explicit type if not initialized"),
@@ -26,6 +28,14 @@ enum class ErrorCode(val code: String, val template: String) {
     UnsupportedPrintType("E0115", "Unsupported type for print: '${0}'"),
     UnsupportedConversion("E0116", "Unsupported conversion from '${0}' to '${1}'"),
     InvalidType("E0117", "Invalid type: '${0}'"),
+
+    // Extra semantic coverage
+    UndefinedVariable("E0120", "Use of undefined variable: '${0}'"),
+    RedeclaredVariable("E0121", "Redeclaration of variable: '${0}'"),
+    UnknownFunction("E0122", "Unknown function: '${0}'"),
+    ArityMismatch("E0123", "Function '${0}' called with ${1} argument(s), but ${2} expected"),
+    NonBoolCondition("E0124", "Condition must be boolean, found '${0}'"),
+    TypeMismatch("E0125", "Type mismatch: expected '${0}', found '${1}'"),
 
     // Codegen
     Internal("E1001", "Internal compiler error: ${0}"),
