@@ -1,9 +1,22 @@
 package codegen.ir
 
+/**
+ * Manages a table of interned strings for LLVM IR generation
+ * Each unique string is stored once in the global section, and can be referenced
+ *
+ * @param globals StringBuilder to which global string definitions are appended
+ */
 class StringTable(private val globals: StringBuilder) {
     private var counter = 0
     private val interned = LinkedHashMap<String, StringRef>()
 
+    /**
+     * Interns a string, returning a StringRef that can be used in LLVM IR
+     * If the string has already been interned, returns the existing StringRef
+     *
+     * @param s The string to intern
+     * @return StringRef containing length, global name, and GEP for the string
+     */
     fun intern(s: String): StringRef {
         return interned.getOrPut(s) {
             val encoded = encodeCString(s)

@@ -4,6 +4,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.system.exitProcess
 
+/**
+ * Data class to hold parsed command line arguments
+ */
 data class Args(
     val input: String?,
     val output: String?,
@@ -15,7 +18,16 @@ data class Args(
     val cc: String?
 )
 
+/**
+ * Main class to parse command line arguments
+ */
 object CLIArguments {
+    /**
+     * Parse command line arguments
+     *
+     * @param argv Array of command line arguments
+     * @return Parsed Args object
+     */
     fun parseArgs(argv: Array<String>): Args {
         var input: String? = null
         var output: String? = null
