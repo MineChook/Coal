@@ -1,6 +1,8 @@
 fn main() {
     var x = 0
-    while(x < 20) {
+    var until = input("how many iterations? ")
+
+    while(x < until.toInt()) {
         x += 1
         println(x)
     }

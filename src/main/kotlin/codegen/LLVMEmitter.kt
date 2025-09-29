@@ -55,8 +55,11 @@ class LLVMEmitter(
      */
     fun emit(prog: Program): String {
         mod = ModuleBuilder()
+
         mod.declarePrintf()
         mod.declareSnprintf()
+        mod.declareScanf()
+        mod.declareStrlen()
         mod.declareMalloc()
         mod.declareMemcpy()
         mod.declareStrtol()
@@ -237,6 +240,7 @@ class LLVMEmitter(
         is Call -> when(e.callee) {
             "print" -> lowerBuiltinPrint(b, e.args, false)
             "println" -> lowerBuiltinPrint(b, e.args, true)
+            "input" -> lowerBuiltinInput(b, e.args)
             else -> ice("unknown function call: ${e.callee}", e.span)
         }
 
@@ -491,6 +495,41 @@ class LLVMEmitter(
         val argTy = if (ty == "i1" || ty == "i8") "i32" else ty
         b.callPrintf(fmtG.constGEP, argTy to op)
         return RValue.Immediate("i32", "0")
+    }
+
+    private fun lowerBuiltinInput(b: BlockBuilder, args: List<Expr>): RValue {
+        if(args.size != 1) ice("input() expects 1 argument, got ${args.size}", args.firstOrNull()?.span ?: Span(0,0,1,1))
+        val prompt = valueOfExpr(b, args[0])
+        val promptPtr = when(prompt) {
+            is RValue.Aggregate -> b.extractValue("{ ptr, i32 }", prompt.literal, 0)
+            is RValue.ValueReg -> b.extractValue("{ ptr, i32 }", prompt.reg, 0)
+            else -> ice("input(prompt): prompt must be string", args[0].span)
+        }
+
+        val fmtPrompt = mod.internCString("%s")
+        val fmtPromptPtr = b.gepGlobalFirst(fmtPrompt)
+        b.callPrintf(fmtPromptPtr, "ptr" to promptPtr)
+
+        val max = 1024
+        val buf = b.allocaArray(max, "i8", "inbuf")
+        val bufPtr = b.gepFirst(buf, max, "i8")
+
+        val scanFmt = mod.internCString(" %1023[^\\n]")
+        val scanFmtPtr = b.gepGlobalFirst(scanFmt)
+        b.call("scanf", "i32", "ptr" to scanFmtPtr, "ptr" to bufPtr)
+
+        val len64 = b.call("strlen", "i64", "ptr" to bufPtr)
+        val len32 = b.trunc("i64", len64, "i32")
+        val cap32 = b.add("i32", len32, "1")
+        val cap64 = b.zext("i32", cap32, "i64")
+        val dst = b.call("malloc", "ptr", "i64" to cap64)
+
+        b.call("memcpy", "ptr", "ptr" to dst, "ptr" to bufPtr, "i64" to len64)
+        val nulPtr = b.gepByteOffset(dst, len32)
+        b.store("i8", "0", nulPtr)
+
+        val packed = b.packString(dst, len32)
+        return RValue.ValueReg("{ ptr, i32 }", packed)
     }
 
     private fun llTypeOf(t: NamedType) = when(t.name) {
