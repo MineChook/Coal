@@ -171,6 +171,20 @@ class TypeChecker(
             }
 
             is Call -> {
+                //TODO: Make this better for when we have more internal functions
+                if(e.callee == "print" || e.callee == "println") {
+                    if(e.args.size != 1) error(e.span, ErrorCode.ArityMismatch, e.callee, "${e.args.size}", "1")
+                    val argTy = typeOf(e.args[0])
+                    when(argTy.name) {
+                        "int", "float", "bool", "char", "string" -> {}
+                        else -> error(e.args[0].span, ErrorCode.UnsupportedPrintType, argTy.name)
+                    }
+
+                    val ret = NamedType("int", e.span)
+                    types.exprTypes[e] = ret
+                    return ret
+                }
+
                 val sig = functions[e.callee] ?: error(e.span, ErrorCode.UnknownFunction, e.callee)
                 val (paramTys, retTy) = sig
                 if(e.args.size != paramTys.size) error(e.span, ErrorCode.ArityMismatch, e.callee, "${e.args.size}", "${paramTys.size}")
