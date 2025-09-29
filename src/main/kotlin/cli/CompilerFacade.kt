@@ -9,6 +9,8 @@ import diagnostics.Severity
 import diagnostics.Span
 import front.lexer.Lexer
 import front.parser.Parser
+import front.types.TypeChecker
+import front.types.TypeInfo
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -23,7 +25,10 @@ object CompilerFacade {
         return try {
             val tokens = Lexer(text, path.toString()).lex()
             val ast = Parser(text, tokens, path.toString()).parseProgram()
-            val llvm = LLVMEmitter().emit(ast)
+            val typeInfo = TypeInfo()
+            TypeChecker(path.toString(), text, typeInfo).check(ast)
+
+            val llvm = LLVMEmitter(typeInfo, path.toString()).emit(ast)
             if(out != null) Files.writeString(out, llvm)
             Result(true, llvm)
         } catch(e: CoalError) {

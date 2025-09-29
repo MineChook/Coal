@@ -8,8 +8,12 @@ import diagnostics.Diagnostic
 import diagnostics.ErrorCode
 import diagnostics.Severity
 import diagnostics.Span
+import front.types.TypeInfo
 
-class LLVMEmitter {
+class LLVMEmitter(
+    private val types: TypeInfo,
+    private val fileName: String = "<codegen>"
+) {
     private sealed interface RValue {
         data class Immediate(val llTy: String, val text: String) : RValue
         data class ValueReg(val llTy: String, val reg: String) : RValue
@@ -65,8 +69,8 @@ class LLVMEmitter {
     }
 
     private fun lowerVarDecl(b: BlockBuilder, fnName: String, decl: VarDecl) {
-        val tyName = (decl.annotatedType ?: inferType(b, decl.init!!)) as NamedType
-        val llTy = llTypeOf(tyName)
+        val ty = types.typeOfVar(fnName, decl.name)
+        val llTy = llTypeOf(ty)
         val slotPtr = b.alloca(llTy, decl.name)
 
         if(decl.init != null) {
@@ -89,7 +93,7 @@ class LLVMEmitter {
     }
 
     private fun lowerAssign(b: BlockBuilder, fnName: String, asg: Assign) {
-        val slot = locals[asg.name] ?: error("Undefined variable ${asg.name}")
+        val slot = locals[asg.name] ?: ice("Local not found for ${asg.name}", asg.span)
         val rhs = valueOfExpr(b, asg.value, slot.llTy)
         when(rhs) {
             is RValue.Immediate -> b.store(rhs.llTy, rhs.text, slot.reg)
@@ -103,43 +107,6 @@ class LLVMEmitter {
         b.store(slot.llTy, t, "@$dbgName")
     }
 
-    private fun valueOfExpr(b: BlockBuilder, e: Expr, expected: String? = null): RValue = when(e) {
-        is IntLit -> RValue.Immediate("i32", e.value.toString())
-        is FloatLit -> RValue.Immediate("double", e.value.toString())
-        is BoolLit -> RValue.Immediate("i1", if(e.value) "1" else "0")
-        is CharLit -> RValue.Immediate("i8", e.value.toString())
-        is StringLit -> {
-            val ref = mod.internCString(e.value)
-            val len = utf8Len(e.value)
-            RValue.Aggregate("{ ptr ${ref.constGEP}, i32 $len }")
-        }
-
-        is Ident -> {
-            val slot = locals[e.name] ?: error("Undefined variable ${e.name}")
-            val t = b.load(slot.llTy, slot.reg)
-            RValue.ValueReg(slot.llTy, t)
-        }
-
-        is Binary -> lowerBinary(b, e)
-        is Call -> when(e.callee) {
-            "print" -> lowerBuiltinPrint(b, e.args, false)
-            "println" -> lowerBuiltinPrint(b, e.args, true)
-            else -> error("Unknown function ${e.callee}")
-        }
-
-        is Unary -> when(e.op) {
-            UnOp.Not -> {
-                val v = valueOfExpr(b, e.expr)
-                val (ty, op) = asOperand(v)
-                require(ty == "i1") { "not operator requires boolean operand" }
-                val t = b.xorI1(op)
-                RValue.ValueReg("i1", t)
-            }
-        }
-
-        is MethodCall -> lowerMethodCall(b, e)
-    }
-
     private fun lowerIf(b: BlockBuilder, s: IfStmt) {
         val end = fresh("if_end")
         val thenLabels = s.branches.indices.map { fresh("if_then$it") }
@@ -149,7 +116,7 @@ class LLVMEmitter {
         fun condTo(bld: BlockBuilder, cond: Expr, thenLabel: String, elseLabel: String) {
             val rv = valueOfExpr(bld, cond)
             val (ty, op) = asOperand(rv)
-            require(ty == "i1") { "if condition must be boolean, got $ty" }
+            if(ty != "i1") ice("if condition must be a boolean, got $ty", cond.span)
             bld.brCond("i1", op, thenLabel, elseLabel)
         }
 
@@ -202,7 +169,7 @@ class LLVMEmitter {
         fun condTo(thenLabel: String, elseLabel: String) {
             val rv = valueOfExpr(b, s.condition)
             val (ty, op) = asOperand(rv)
-            require(ty == "i1") { "while condition must be a boolean, got $ty" }
+            if(ty != "i1") ice("while condition must be a boolean, got $ty", s.condition.span)
             b.brCond("i1", op, thenLabel, elseLabel)
         }
 
@@ -225,58 +192,41 @@ class LLVMEmitter {
         b.nextBlock(end)
     }
 
-    private fun lowerMethodCall(b: BlockBuilder, m: MethodCall): RValue {
-        require(m.args.isEmpty()) { "conversion methods take no arguments" }
-        val recv = valueOfExpr(b, m.receiver)
-
-        fun isStringLike(v: RValue) = (v is RValue.ValueReg && v.llTy == "{ ptr, i32 }") || (v is RValue.Aggregate)
-        fun stringPtrOf(v: RValue): String = when (v) {
-            is RValue.Aggregate -> b.extractValue("{ ptr, i32 }", v.literal, 0)
-            is RValue.ValueReg -> b.extractValue("{ ptr, i32 }", v.reg, 0)
-            else -> error("expected string aggregate")
+    private fun valueOfExpr(b: BlockBuilder, e: Expr, expected: String? = null): RValue = when(e) {
+        is IntLit -> RValue.Immediate("i32", e.value.toString())
+        is FloatLit -> RValue.Immediate("double", e.value.toString())
+        is BoolLit -> RValue.Immediate("i1", if(e.value) "1" else "0")
+        is CharLit -> RValue.Immediate("i8", e.value.toString())
+        is StringLit -> {
+            val ref = mod.internCString(e.value)
+            val len = utf8Len(e.value)
+            RValue.Aggregate("{ ptr ${ref.constGEP}, i32 $len }")
         }
 
-        return when(m.method) {
-            "toString" -> when(recv) {
-                is RValue.Aggregate -> recv
-                is RValue.Immediate, is RValue.ValueReg -> numberOrCharToString(b, recv)
-            }
-
-            "toInt" -> when {
-                (recv is RValue.Immediate && recv.llTy == "double") || (recv is RValue.ValueReg && recv.llTy == "double") -> {
-                    val i = b.fptosi("double", asOperand(recv).second, "i32")
-                    RValue.ValueReg("i32", i)
-                }
-
-                m.receiver is StringLit -> stringToIntIfLiteral(m.receiver)
-                isStringLike(recv) -> {
-                    val nptr = stringPtrOf(recv)
-                    val r64 = b.call("strtol", "i64", "ptr" to nptr, "ptr" to "null", "i32" to "10")
-                    val r32 = b.trunc("i64", r64, "i32")
-                    RValue.ValueReg("i32", r32)
-                }
-
-                else -> error("toInt() not supported for type ${(if (recv is RValue.ValueReg) recv.llTy else recv::class.simpleName)}")
-            }
-
-            "toFloat" -> when {
-                (recv is RValue.Immediate && recv.llTy == "i32") || (recv is RValue.ValueReg && recv.llTy == "i32") -> {
-                    val f = b.sitofp("i32", asOperand(recv).second, "double")
-                    RValue.ValueReg("double", f)
-                }
-
-                m.receiver is StringLit -> stringToFloatIfLiteral(m.receiver)
-                isStringLike(recv) -> {
-                    val nptr = stringPtrOf(recv)
-                    val f = b.call("strtod", "double", "ptr" to nptr, "ptr" to "null")
-                    RValue.ValueReg("double", f)
-                }
-
-                else -> error("toFloat() not supported for type ${(if (recv is RValue.ValueReg) recv.llTy else recv::class.simpleName)}")
-            }
-
-            else -> error("unknown method ${m.method}")
+        is Ident -> {
+            val slot = locals[e.name] ?: ice("Local not found for ${e.name}", e.span)
+            val t = b.load(slot.llTy, slot.reg)
+            RValue.ValueReg(slot.llTy, t)
         }
+
+        is Binary -> lowerBinary(b, e)
+        is Call -> when(e.callee) {
+            "print" -> lowerBuiltinPrint(b, e.args, false)
+            "println" -> lowerBuiltinPrint(b, e.args, true)
+            else -> ice("unknown function call: ${e.callee}", e.span)
+        }
+
+        is Unary -> when(e.op) {
+            UnOp.Not -> {
+                val v = valueOfExpr(b, e.expr)
+                val (ty, op) = asOperand(v)
+                if(ty != "i1") ice("! operator requires boolean operand, got $ty", e.span)
+                val t = b.xorI1(op)
+                RValue.ValueReg("i1", t)
+            }
+        }
+
+        is MethodCall -> lowerMethodCall(b, e)
     }
 
     private fun lowerBinary(b: BlockBuilder, bin: Binary): RValue {
@@ -284,7 +234,7 @@ class LLVMEmitter {
             BinOp.And -> {
                 val lhs = valueOfExpr(b, bin.left)
                 val (lty, lop) = asOperand(lhs)
-                require(lty == "i1") { "left operand of && must be boolean, got $lty" }
+                if(lty != "i1") ice("left operand of && must be boolean, got $lty", bin.left.span)
 
                 val evalR = fresh("and_r")
                 val falseBlk = fresh("and_false")
@@ -294,7 +244,7 @@ class LLVMEmitter {
                 val tb = b.nextBlock(evalR)
                 val rhs = valueOfExpr(tb, bin.right)
                 val (rty, rop) = asOperand(rhs)
-                require(rty == "i1") { "right operand of && must be boolean, got $rty" }
+                if(rty != "i1") ice("right operand of && must be boolean, got $rty", bin.right.span)
                 tb.br(done)
 
                 val fb = b.nextBlock(falseBlk)
@@ -308,7 +258,7 @@ class LLVMEmitter {
             BinOp.Or -> {
                 val lhs = valueOfExpr(b, bin.left)
                 val (lty, lop) = asOperand(lhs)
-                require(lty == "i1") { "left operand of || must be boolean, got $lty" }
+                if(lty != "i1") ice("left operand of || must be boolean, got $lty", bin.left.span)
 
                 val trueBlk = fresh("or_true")
                 val evalR = fresh("or_r")
@@ -321,7 +271,7 @@ class LLVMEmitter {
                 val rb = b.nextBlock(evalR)
                 val rhs = valueOfExpr(rb, bin.right)
                 val (rty, rop) = asOperand(rhs)
-                require(rty == "i1") { "right operand of || must be boolean, got $rty" }
+                if(rty != "i1") ice("right operand of || must be boolean, got $rty", bin.right.span)
                 rb.br(done)
 
                 val jb = b.nextBlock(done)
@@ -337,55 +287,39 @@ class LLVMEmitter {
                 val lrv = valueOfExpr(b, bin.left)
                 val rrv = valueOfExpr(b, bin.right)
 
-                fun both(): Triple<String, String, String> {
-                    val (lt, lo) = asOperand(lrv)
-                    val (rt, ro) = asOperand(rrv)
-                    require(lt == rt) { "Type mismatch in comparison: $lt vs $rt" }
-                    return Triple(lt, lo, ro)
-                }
+                val (lt, lo) = asOperand(lrv)
+                val (rt, ro) = asOperand(rrv)
+                if (lt != rt) ice("cmp operands mismatch: $lt vs $rt", bin.span)
 
-                val (llTy, lhs, rhs) = both()
-                val out = when(llTy) {
+                val out = when(lt) {
                     "i32", "i8", "i1" -> {
                         val pred = when(bin.op) {
-                            BinOp.Eq -> "eq"
-                            BinOp.Ne -> "ne"
-                            BinOp.Lt -> "slt"
-                            BinOp.Le -> "sle"
-                            BinOp.Gt -> "sgt"
-                            BinOp.Ge -> "sge"
-                            else -> error("unreachable")
+                            BinOp.Eq -> "eq"; BinOp.Ne -> "ne"
+                            BinOp.Lt -> "slt"; BinOp.Le -> "sle"
+                            BinOp.Gt -> "sgt"; BinOp.Ge -> "sge"
+                            else -> ice("bad int cmp", bin.span)
                         }
-
-                        b.icmp(pred, llTy, lhs, rhs)
+                        b.icmp(pred, lt, lo, ro)
                     }
 
                     "double" -> {
                         val pred = when(bin.op) {
-                            BinOp.Eq -> "oeq"
-                            BinOp.Ne -> "one"
-                            BinOp.Lt -> "olt"
-                            BinOp.Le -> "ole"
-                            BinOp.Gt -> "ogt"
-                            BinOp.Ge -> "oge"
-                            else -> error("unreachable")
+                            BinOp.Eq -> "oeq"; BinOp.Ne -> "one"
+                            BinOp.Lt -> "olt"; BinOp.Le -> "ole"
+                            BinOp.Gt -> "ogt"; BinOp.Ge -> "oge"
+                            else -> ice("bad fp cmp", bin.span)
                         }
-
-                        b.fcmp(pred, lhs, rhs)
+                        b.fcmp(pred, lo, ro)
                     }
 
                     "{ ptr, i32 }" -> {
-                        require(bin.op == BinOp.Eq || bin.op == BinOp.Ne) {
-                            "only == and != supported for strings"
-                        }
-
                         val lp = extractStringPtr(b, lrv)
                         val rp = extractStringPtr(b, rrv)
                         val pred = if(bin.op == BinOp.Eq) "eq" else "ne"
                         b.icmp(pred, "ptr", lp, rp)
                     }
 
-                    else -> error("unsupported type in comparison: $llTy")
+                    else -> ice("cmp unsupported llty $lt", bin.span)
                 }
 
                 return RValue.ValueReg("i1", out)
@@ -395,35 +329,33 @@ class LLVMEmitter {
         }
 
         run {
-            val lt = inferType(b, bin.left) as NamedType
-            val rt = inferType(b, bin.right) as NamedType
-            if(lt.name == "string" && rt.name == "string") {
-                require(bin.op == BinOp.Add) { "only + supported for strings" }
+            val ty = types.typeOf(bin)
+            if(ty.name == "string") {
                 val lhs = valueOfExpr(b, bin.left)
                 val rhs = valueOfExpr(b, bin.right)
                 return concatStrings(b, lhs, rhs)
             }
         }
 
-        val tyName = (inferType(b, bin) as NamedType).name
-        val llTy = when(tyName) {
+        val resTy = types.typeOf(bin)
+        val llTy = when(resTy.name) {
             "float" -> "double"
-            "int" -> "i32"
-            "char" -> "i8"
-            else -> error("unsupported type in binary expression: $tyName")
+            "int"   -> "i32"
+            "char"  -> "i8"
+            else    -> ice("unsupported type ${resTy.name} in arithmetic", bin.span)
         }
 
         fun asOp(rv: RValue): String = when(rv) {
             is RValue.Immediate -> rv.text
-            is RValue.ValueReg -> rv.reg
-            is RValue.Aggregate -> error("Cannot use aggregate in binary expression")
+            is RValue.ValueReg  -> rv.reg
+            is RValue.Aggregate -> ice("aggregate used as scalar op", bin.span)
         }
 
-        var lhs = valueOfExpr(b, bin.left, llTy)
-        var rhs = valueOfExpr(b, bin.right, llTy)
+        var lhs = valueOfExpr(b, bin.left)
+        var rhs = valueOfExpr(b, bin.right)
 
-        fun maybeZextToI32(v: RValue): RValue = when(v) {
-            is RValue.ValueReg -> if(v.llTy == "i8") {
+        fun maybeZextToI32(v: RValue): RValue = when (v) {
+            is RValue.ValueReg -> if (v.llTy == "i8") {
                 val z = b.zext("i8", v.reg, "i32")
                 RValue.ValueReg("i32", z)
             } else v
@@ -440,56 +372,84 @@ class LLVMEmitter {
 
         val a = asOp(lhs)
         val c = asOp(rhs)
-        val res = when(bin.op) {
-            BinOp.Pow -> {
-                if(useFloat) b.fpow(a, c)
-                else b.pow(a, c)
-            }
-
-            BinOp.Add -> {
-                if(useFloat) b.fadd(a, c)
-                else b.add(if((lhs as? RValue.ValueReg)?.llTy == "i32" || (lhs as? RValue.Immediate)?.llTy == "i32") "i32" else "i32", a, c)
-            }
-
-            BinOp.Sub -> {
-                if(useFloat) b.fsub(a, c)
-                else b.sub("i32", a, c)
-            }
-
-            BinOp.Mul -> {
-                if(useFloat) b.fmul(a, c)
-                else b.mul("i32", a, c)
-            }
-
-            BinOp.Div -> {
-                if(useFloat) b.fdiv(a, c)
-                else b.sdiv("i32", a, c)
-            }
-
-            BinOp.Mod -> {
-                require(!useFloat) { "modulus supported only for integers" }
-                b.srem("i32", a, c)
-            }
-
-            else -> error("Unexpected binary operator in arithmetic: ${bin.op}")
+        val reg = when(bin.op) {
+            BinOp.Pow -> if(useFloat) b.fpow(a, c) else b.pow(a, c)
+            BinOp.Add -> if(useFloat) b.fadd(a, c) else b.add("i32", a, c)
+            BinOp.Sub -> if(useFloat) b.fsub(a, c) else b.sub("i32", a, c)
+            BinOp.Mul -> if(useFloat) b.fmul(a, c) else b.mul("i32", a, c)
+            BinOp.Div -> if(useFloat) b.fdiv(a, c) else b.sdiv("i32", a, c)
+            BinOp.Mod -> { if(useFloat) ice("mod on float", bin.span); b.srem("i32", a, c) }
+            else -> ice("unexpected binop ${bin.op} in arithmetic", bin.span)
         }
 
-        return RValue.ValueReg(if(useFloat) "double" else "i32", res)
+        return RValue.ValueReg(if (useFloat) "double" else "i32", reg)
+    }
+
+    private fun lowerMethodCall(b: BlockBuilder, m: MethodCall): RValue {
+        val recv = valueOfExpr(b, m.receiver)
+
+        fun isStringLike(v: RValue) = (v is RValue.ValueReg && v.llTy == "{ ptr, i32 }") || (v is RValue.Aggregate)
+        fun stringPtrOf(v: RValue): String = when(v) {
+            is RValue.Aggregate -> b.extractValue("{ ptr, i32 }", v.literal, 0)
+            is RValue.ValueReg  -> b.extractValue("{ ptr, i32 }", v.reg, 0)
+            else -> ice("Expected string aggregate")
+        }
+
+        return when (m.method) {
+            "toString" -> when(recv) {
+                is RValue.Aggregate -> recv
+                is RValue.Immediate, is RValue.ValueReg -> numberOrCharToString(b, recv)
+            }
+
+            "toInt" -> when {
+                (recv is RValue.Immediate && recv.llTy == "double") || (recv is RValue.ValueReg  && recv.llTy == "double") -> {
+                    val i = b.fptosi("double", asOperand(recv).second, "i32")
+                    RValue.ValueReg("i32", i)
+                }
+
+                m.receiver is StringLit -> stringToIntIfLiteral(m.receiver)
+                isStringLike(recv) -> {
+                    val nptr = stringPtrOf(recv)
+                    val r64 = b.call("strtol", "i64", "ptr" to nptr, "ptr" to "null", "i32" to "10")
+                    val r32 = b.trunc("i64", r64, "i32")
+                    RValue.ValueReg("i32", r32)
+                }
+
+                else -> ice("toInt() recv type unsupported", m.span)
+            }
+
+            "toFloat" -> when {
+                (recv is RValue.Immediate && recv.llTy == "i32") || (recv is RValue.ValueReg  && recv.llTy == "i32") -> {
+                    val f = b.sitofp("i32", asOperand(recv).second, "double")
+                    RValue.ValueReg("double", f)
+                }
+
+                m.receiver is StringLit -> stringToFloatIfLiteral(m.receiver)
+                isStringLike(recv) -> {
+                    val nptr = stringPtrOf(recv)
+                    val f = b.call("strtod", "double", "ptr" to nptr, "ptr" to "null")
+                    RValue.ValueReg("double", f)
+                }
+
+                else -> ice("toFloat() recv type unsupported", m.span)
+            }
+
+            else -> ice("Unknown method: ${m.method}", m.span)
+        }
     }
 
     private fun lowerBuiltinPrint(b: BlockBuilder, args: List<Expr>, newline: Boolean): RValue {
-        require(args.size == 1) { "print/println takes exactly one argument" }
+        if(args.size != 1) ice("print/println expects 1 argument, got ${args.size}", args.firstOrNull()?.span ?: Span(0,0,1,1))
         val rv = valueOfExpr(b, args[0])
 
         fun isStringAggReg(v: RValue) = v is RValue.ValueReg && v.llTy == "{ ptr, i32 }"
         if(rv is RValue.Aggregate || isStringAggReg(rv)) {
-            val fmtRef = mod.internCString(if (newline) "%s\n" else "%s")
+            val fmtRef = mod.internCString(if(newline) "%s\n" else "%s")
             val fmtPtr = b.gepGlobalFirst(fmtRef)
-
-            val strPtr = when (rv) {
+            val strPtr = when(rv) {
                 is RValue.Aggregate -> b.extractValue("{ ptr, i32 }", rv.literal, 0)
                 is RValue.ValueReg  -> b.extractValue("{ ptr, i32 }", rv.reg, 0)
-                else -> error("unreachable")
+                else -> ice("Unreachable print string", args[0].span)
             }
 
             b.callPrintf(fmtPtr, "ptr" to strPtr)
@@ -499,79 +459,32 @@ class LLVMEmitter {
         val (ty, op) = asOperand(rv)
         val fmt = when(ty) {
             "i32", "i1", "i8" -> if(newline) "%d\n" else "%d"
-            "double" -> if(newline) "%f\n" else "%f"
-            else -> error("unsupported print type: $ty")
+            "double"          -> if(newline) "%f\n" else "%f"
+            else              -> ice("Print unsupported llty $ty", args[0].span)
         }
 
         val fmtG = mod.internCString(fmt)
-        val argTy = when (ty) { "i1","i8" -> "i32"; else -> ty }
+        val argTy = if (ty == "i1" || ty == "i8") "i32" else ty
         b.callPrintf(fmtG.constGEP, argTy to op)
-
         return RValue.Immediate("i32", "0")
     }
 
-    // utils
-    private fun inferType(b: BlockBuilder, expr: Expr): TypeRef = when(expr) {
-        is IntLit -> NamedType("int")
-        is FloatLit -> NamedType("float")
-        is BoolLit -> NamedType("bool")
-        is CharLit -> NamedType("char")
-        is StringLit -> NamedType("string")
-        is Ident -> {
-            val slot = locals[expr.name] ?: error("unknown ident in inferType: ${expr.name}")
-            when(slot.llTy) {
-                "i32" -> NamedType("int")
-                "double" -> NamedType("float")
-                "i1" -> NamedType("bool")
-                "i8" -> NamedType("char")
-                "{ ptr, i32 }" -> NamedType("string")
-                else -> error("cannot infer from $slot")
-            }
-        }
-
-        is Binary -> {
-            val lt = inferType(b, expr.left) as NamedType
-            val rt = inferType(b, expr.right) as NamedType
-            require(lt == rt) { "Type mismatch in binary expression: $lt vs $rt" }
-            when(lt.name) {
-                "int", "float" -> lt
-                "string" -> lt
-                else -> error("unsupported type in binary expression: ${lt.name}")
-            }
-        }
-
-        is Call -> NamedType("int")
-        is MethodCall -> when(expr.method) {
-            "toString" -> NamedType("string")
-            "toInt" -> NamedType("int")
-            "toFloat" -> NamedType("float")
-            else -> error("unknown method '${expr.method}'")
-        }
-
-        is Unary -> when(expr.op) {
-            UnOp.Not -> NamedType("bool")
-        }
-    }
-
-    private fun llTypeOf(t: NamedType) = when (t.name) {
-        "int" -> "i32"
-        "float" -> "double"
-        "bool" -> "i1"
-        "char" -> "i8"
+    private fun llTypeOf(t: NamedType) = when(t.name) {
+        "int"    -> "i32"
+        "float"  -> "double"
+        "bool"   -> "i1"
+        "char"   -> "i8"
         "string" -> "{ ptr, i32 }"
-        else -> error("unknown type ${t.name}")
-    }
-
-    private fun zeroInit(ty: String) = when (ty) {
-        "i1","i8","i32" -> "0"
-        "double" -> "0.0"
-        "{ ptr, i32 }" -> "{ ptr null, i32 0 }"
-        else -> error("no zero init for $ty")
+        else     -> ice("Unknown frontend type ${t.name}", t.span)
     }
 
     private fun numberOrCharToString(b: BlockBuilder, rv: RValue): RValue {
         val (ty, op) = asOperand(rv)
-        val fmt = when(ty) { "i32","i1","i8" -> "%d"; "double" -> "%f"; else -> error("toString() not supported for type $ty") }
+        val fmt = when(ty) {
+            "i32","i1","i8" -> "%d"
+            "double"        -> "%f"
+            else            -> ice("toString() unsupported llty $ty")
+        }
 
         val fmtRef = mod.internCString(fmt)
         val fmtPtr = b.gepGlobalFirst(fmtRef)
@@ -579,86 +492,82 @@ class LLVMEmitter {
         val buf = b.allocaArray(64, "i8")
         val bufPtr = b.gepFirst(buf, 64, "i8")
 
-        val written = b.callSnprintf(
+        val wrote = b.callSnprintf(
             bufPtr, 64, fmtPtr,
-            when (ty) { "i1","i8" -> "i32" to op; else -> ty to op }
+            if (ty == "i1" || ty == "i8") "i32" to op else ty to op
         )
 
-        val ssa = b.packString(bufPtr, written)
+        val ssa = b.packString(bufPtr, wrote)
         return RValue.ValueReg("{ ptr, i32 }", ssa)
     }
 
-    private fun stringToIntIfLiteral(recv: Expr): RValue {
-        return when(recv) {
+    private fun stringToIntIfLiteral(recv: Expr): RValue =
+        when(recv) {
             is StringLit -> {
                 val s = recv.value.trim()
-                val v = s.toLongOrNull() ?: error("cannot convert string '$s' to int")
+                val v = s.toLongOrNull() ?: ice("String literal toInt() failed: '$s'", recv.span)
                 RValue.Immediate("i32", v.toString())
             }
 
-            else -> error("toInt() supported only on string literals")
+            else -> ice("toInt fast-path expects StringLit", recv.span)
         }
-    }
 
-    private fun stringToFloatIfLiteral(recv: Expr): RValue {
-        return when(recv) {
+    private fun stringToFloatIfLiteral(recv: Expr): RValue =
+        when(recv) {
             is StringLit -> {
                 val s = recv.value.trim()
-                val v = s.toDoubleOrNull() ?: error("cannot convert string '$s' to float")
+                val v = s.toDoubleOrNull() ?: ice("String literal toFloat() failed: '$s'", recv.span)
                 RValue.Immediate("double", v.toString())
             }
 
-            else -> error("toFloat() supported only on string literals")
+            else -> ice("toFloat fast-path expects StringLit", recv.span)
         }
-    }
-    
+
     private fun concatStrings(b: BlockBuilder, a: RValue, c: RValue): RValue {
-        fun asStringParts(rv: RValue): Pair<String, String> {
-            return when(rv) {
-                is RValue.Aggregate -> {
-                    val p = b.extractValue("{ ptr, i32 }", rv.literal, 0)
-                    val l = b.extractValue("{ ptr, i32 }", rv.literal, 1)
-                    p to l
-                }
-                
-                is RValue.ValueReg -> {
-                    require(rv.llTy == "{ ptr, i32 }") { "expected string aggregate, got ${rv.llTy}" }
-                    val p = b.extractValue("{ ptr, i32 }", rv.reg, 0)
-                    val l = b.extractValue("{ ptr, i32 }", rv.reg, 1)
-                    p to l
-                }
-                
-                is RValue.Immediate -> error("cannot use immediate as string")
+        fun parts(rv: RValue): Pair<String, String> = when(rv) {
+            is RValue.Aggregate -> {
+                val p = b.extractValue("{ ptr, i32 }", rv.literal, 0)
+                val l = b.extractValue("{ ptr, i32 }", rv.literal, 1)
+                p to l
             }
+
+            is RValue.ValueReg -> {
+                if(rv.llTy != "{ ptr, i32 }") ice("Concat expects string reg, got ${rv.llTy}")
+                val p = b.extractValue("{ ptr, i32 }", rv.reg, 0)
+                val l = b.extractValue("{ ptr, i32 }", rv.reg, 1)
+                p to l
+            }
+
+            is RValue.Immediate -> ice("concat immediate (unexpected)")
         }
-        
-        val (aPtr, aLen) = asStringParts(a)
-        val (cPtr, cLen) = asStringParts(c)
+
+        val (aPtr, aLen) = parts(a)
+        val (cPtr, cLen) = parts(c)
         val totalLen = b.add("i32", aLen, cLen)
-        
+
         val one = "1"
         val capI32 = b.add("i32", totalLen, one)
         val capI64 = b.zext("i32", capI32, "i64")
         val buf = b.call("malloc", "ptr", "i64" to capI64)
-        
+
         val aLen64 = b.zext("i32", aLen, "i64")
-        b.call("memcpy", "ptr", "ptr" to buf, "ptr" to aPtr, "i64" to aLen64)
-        
+        b.call("memcpy", "ptr", "ptr" to buf,  "ptr" to aPtr, "i64" to aLen64)
+
         val dst2 = b.gepByteOffset(buf, aLen)
         val cLen64 = b.zext("i32", cLen, "i64")
         b.call("memcpy", "ptr", "ptr" to dst2, "ptr" to cPtr, "i64" to cLen64)
-        
+
         val nulPtr = b.gepByteOffset(buf, totalLen)
         b.store("i8", "0", nulPtr)
-        
+
         val packed = b.packString(buf, totalLen)
         return RValue.ValueReg("{ ptr, i32 }", packed)
     }
 
     private fun asOperand(rv: RValue): Pair<String, String> = when(rv) {
         is RValue.Immediate -> rv.llTy to rv.text
-        is RValue.ValueReg -> rv.llTy to rv.reg
-        is RValue.Aggregate -> error("cannot use aggregate as operand")
+        is RValue.ValueReg  -> rv.llTy to rv.reg
+        is RValue.Aggregate -> ice("Aggregate used as scalar")
     }
 
     private fun ensureDbgGlobal(name: String, llTy: String) {
@@ -668,12 +577,31 @@ class LLVMEmitter {
         }
     }
 
+    private fun zeroInit(ty: String) = when(ty) {
+        "i1","i8","i32" -> "0"
+        "double"        -> "0.0"
+        "{ ptr, i32 }"  -> "{ ptr null, i32 0 }"
+        else            -> ice("no zero init for $ty")
+    }
+
+    private fun extractStringPtr(b: BlockBuilder, rv: RValue): String = when(rv) {
+        is RValue.Aggregate -> b.extractValue("{ ptr, i32 }", rv.literal, 0)
+        is RValue.ValueReg  -> b.extractValue("{ ptr, i32 }", rv.reg, 0)
+        else -> ice("expected string aggregate")
+    }
+
     private fun utf8Len(s: String) = s.toByteArray(Charsets.UTF_8).size
     private fun fresh(base: String) = "${base}_${labelCounter++}"
 
-    private fun extractStringPtr(b: BlockBuilder, rv: RValue): String = when (rv) {
-        is RValue.Aggregate -> b.extractValue("{ ptr, i32 }", rv.literal, 0)
-        is RValue.ValueReg  -> b.extractValue("{ ptr, i32 }", rv.reg, 0)
-        else -> error("expected string aggregate")
+    private fun ice(msg: String, span: Span = Span(0,0,1,1)): Nothing {
+        throw CoalError(
+            Diagnostic(
+                Severity.ERROR,
+                ErrorCode.Internal,
+                fileName,
+                span,
+                listOf(msg)
+            )
+        )
     }
 }

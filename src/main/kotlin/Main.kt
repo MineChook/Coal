@@ -4,6 +4,8 @@ import cli.CLIArguments.parseArgs
 import codegen.LLVMEmitter
 import front.lexer.Lexer
 import front.parser.Parser
+import front.types.TypeChecker
+import front.types.TypeInfo
 import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Path
@@ -63,7 +65,10 @@ fun main(argv: Array<String>) {
             return
         }
 
-        val ir = LLVMEmitter().emit(program)
+        val typeInfo = TypeInfo()
+        TypeChecker(inputPath.fileName.toString(), source, typeInfo).check(program)
+        val ir = LLVMEmitter(typeInfo, inputPath.fileName.toString()).emit(program)
+
         if(args.emitIR) {
             println(ir)
             return
