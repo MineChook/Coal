@@ -59,6 +59,20 @@ fn main() {
 }
 ```
 
+### While loops
+```coal
+fn main() {
+    var x = 0
+    while(x < 100_000) {
+        x += 1
+        println(x)
+    }
+
+    println("We're done!")
+}
+
+```
+
 ### System Out and In
 **To print to the console, use the println function:**
 ```coal
