@@ -15,9 +15,11 @@ import ast.FnDecl
 import ast.Ident
 import ast.IfBranch
 import ast.IfStmt
+import ast.ImportDecl
 import ast.IntLit
 import ast.MethodCall
 import ast.NamedType
+import ast.Param
 import ast.Program
 import ast.Stmt
 import ast.StringLit
@@ -44,8 +46,29 @@ class Parser(
 
     fun parseProgram(): Program {
         val decls = mutableListOf<Decl>()
-        while(!cur.atEnd()) decls += parseFnDecl()
+        while(!cur.atEnd()) {
+            if (cur.check(TokenKind.Import)) decls += parseImportDecl()
+            decls += parseFnDecl()
+        }
         return Program(decls)
+    }
+
+    private fun parseImportDecl(): ImportDecl {
+        val importTok = cur.expect(TokenKind.Import, ErrorCode.ExpectedToken)
+        val names: MutableList<String> = mutableListOf()
+
+        if (cur.match(TokenKind.LParen)) {
+            do {
+                val nameTok = cur.expectIdent(ErrorCode.ExpectedToken)
+                names += nameTok.lexeme
+            } while (cur.match(TokenKind.Comma))
+            cur.expect(TokenKind.RParen, ErrorCode.ExpectedToken)
+            cur.expect(TokenKind.From, ErrorCode.ExpectedToken)
+        }
+
+        val moduleTok = cur.expectIdent(ErrorCode.ExpectedToken)
+        val sp = Span.merge(importTok.span, moduleTok.span)
+        return ImportDecl(moduleTok.lexeme, names, sp)
     }
 
     private fun parseFnDecl(): FnDecl {

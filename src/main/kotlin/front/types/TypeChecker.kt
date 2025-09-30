@@ -71,6 +71,7 @@ class TypeChecker(
         program.decls.forEach { d ->
             when(d) {
                 is FnDecl -> checkFn(d)
+                else -> return@forEach
             }
         }
     }

@@ -65,6 +65,7 @@ class LLVMEmitter(
         for(d in prog.decls) {
             when(d) {
                 is FnDecl -> emitFn(d)
+                else -> return mod.toString()
             }
         }
 

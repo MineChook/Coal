@@ -14,6 +14,12 @@ import kotlinx.serialization.Serializable
     override val span: Span
 ) : Decl
 
+@Serializable data class ImportDecl(
+    val module: String,
+    val params: List<String>,
+    override val span: Span
+) : Decl
+
 @Serializable data class Param(val name: String, val type: TypeRef, val span: Span)
 @Serializable data class Block(val stmts: List<Stmt>, val span: Span)
 
