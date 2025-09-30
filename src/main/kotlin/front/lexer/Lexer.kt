@@ -1,5 +1,17 @@
-package front
+package front.lexer
 
+import diagnostics.CoalError
+import diagnostics.Diagnostic
+import diagnostics.ErrorCode
+import diagnostics.Severity
+import diagnostics.Span
+
+/**
+ * The heart of the lexer. Takes a source string and produces a list of tokens for the parser to consume
+ *
+ * @param source The source code to lex
+ * @param fileName The name of the source file (for error reporting)
+ */
 class Lexer(
     private val source: String,
     private val fileName: String = "<stdin>"
@@ -19,9 +31,18 @@ class Lexer(
         "float" to TokenKind.KwFloat,
         "bool" to TokenKind.KwBool,
         "char" to TokenKind.KwChar,
-        "string" to TokenKind.KwString
+        "string" to TokenKind.KwString,
+        "if" to TokenKind.If,
+        "elif" to TokenKind.Elif,
+        "else" to TokenKind.Else,
+        "while" to TokenKind.While
     )
 
+    /**
+     * Lex the source code into a list of tokens
+     *
+     * @return A list of tokens
+     */
     fun lex(): List<Token> {
         while(true) {
             skipWhitespaceAndComments()
@@ -104,23 +125,23 @@ class Lexer(
                 }
 
                 '\\' -> {
-                    val esc = advanceOrError("Unterminated escape in string", line0, col0)
+                    val esc = advanceOrError(ErrorCode.UnterminatedString, line0, col0)
                     sb.append(when(esc) {
                         '"' -> '"'
                         '\\'-> '\\'
                         'n' -> '\n'
                         't' -> '\t'
                         'r' -> '\r'
-                        else -> lexError("Unknown escape sequence: \\$esc", start, line0, col0)
+                        else -> lexError(ErrorCode.UnknownEscapeSequence, start, line0, col0)
                     })
                 }
 
-                '\n' -> lexError("Unterminated string literal (newline)", start, line0, col0)
+                '\n' -> lexError(ErrorCode.UnterminatedString, start, line0, col0)
                 else -> sb.append(c)
             }
         }
 
-        if(!terminated) lexError("Unterminated string literal (EOF)", start, line0, col0)
+        if(!terminated) lexError(ErrorCode.UnterminatedString, start, line0, col0)
         val end = i
         val raw = source.substring(start, end)
 
@@ -128,27 +149,27 @@ class Lexer(
     }
 
     private fun lexChar(start: Int, line0: Int, col0: Int) {
-        if(isAtEnd()) lexError("Unterminated char literal (EOF)", start, line0, col0)
+        if(isAtEnd()) lexError(ErrorCode.UnterminatedChar, start, line0, col0)
         val c = advance()
         val value = when(c) {
             '\\' -> {
-                val esc = advanceOrError("Unterminated escape in char", line0, col0)
+                val esc = advanceOrError(ErrorCode.UnterminatedChar, line0, col0)
                 when (esc) {
                     '\'' -> '\''
                     '\\' -> '\\'
                     'n' -> '\n'
                     't' -> '\t'
                     'r' -> '\r'
-                    else -> lexError("Unknown escape sequence: \\$esc", start, line0, col0)
+                    else -> lexError(ErrorCode.UnknownEscapeSequence, start, line0, col0)
                 }
             }
 
-            '\'' -> lexError("Empty char literal", start, line0, col0)
-            '\n' -> lexError("Unterminated char literal (newline)", start, line0, col0)
+            '\'' -> lexError(ErrorCode.EmptyCharLiteral, start, line0, col0)
+            '\n' -> lexError(ErrorCode.UnterminatedChar, start, line0, col0)
             else -> c
         }
 
-        if(!match('\'')) lexError("Unterminated char literal (missing closing ')", start, line0, col0)
+        if(!match('\'')) lexError(ErrorCode.UnterminatedChar, start, line0, col0)
         val end = i
         val raw = source.substring(start, end)
 
@@ -176,7 +197,60 @@ class Lexer(
             '^' -> add(TokenKind.Caret, start, line0, col0)
             '/' -> add(TokenKind.Slash, start, line0, col0)
             '%' -> add(TokenKind.Percent, start, line0, col0)
-            '=' -> add(TokenKind.Equal, start, line0, col0)
+            '=' -> {
+                if(peek() == '=') {
+                    advance()
+                    add(TokenKind.EqualEqual, start, line0, col0)
+                } else {
+                    add(TokenKind.Equal, start, line0, col0)
+                }
+            }
+
+            '!' -> {
+                if(peek() == '=') {
+                    advance()
+                    add(TokenKind.BangEqual, start, line0, col0)
+                } else {
+                    add(TokenKind.Bang, start, line0, col0)
+                }
+            }
+
+            '<' -> {
+                if(peek() == '=') {
+                    advance()
+                    add(TokenKind.LtEq, start, line0, col0)
+                } else {
+                    add(TokenKind.Lt, start, line0, col0)
+                }
+            }
+
+            '>' -> {
+                if(peek() == '=') {
+                    advance()
+                    add(TokenKind.GtEq, start, line0, col0)
+                } else {
+                    add(TokenKind.Gt, start, line0, col0)
+                }
+            }
+
+            '&' -> {
+                if(peek() == '&') {
+                    advance()
+                    add(TokenKind.AndAnd, start, line0, col0)
+                } else {
+                    lexError(ErrorCode.UnexpectedChar, start, line0, col0)
+                }
+            }
+
+            '|' -> {
+                if(peek() == '|') {
+                    advance()
+                    add(TokenKind.OrOr, start, line0, col0)
+                } else {
+                    lexError(ErrorCode.UnexpectedChar, start, line0, col0)
+                }
+            }
+
             ';' -> { /* ignore semicolons */ }
             '.' -> {
                 if(peek() == '.') {
@@ -187,7 +261,7 @@ class Lexer(
                 }
             }
 
-            else -> lexError("Unexpected character: '$c'", start, line0, col0)
+            else -> lexError(ErrorCode.UnexpectedChar, start, line0, col0)
         }
     }
 
@@ -219,22 +293,12 @@ class Lexer(
     private fun isDigit(c: Char) = c in '0'..'9'
     private fun isAlphaNum(c: Char) = isAlpha(c) || isDigit(c) || c == '_'
 
-    private fun advanceOrError(msg: String, line0: Int, col0: Int): Char {
-        if(isAtEnd()) lexError(msg, i, line0, col0)
+    private fun advanceOrError(error: ErrorCode, line0: Int, col0: Int): Char {
+        if(isAtEnd()) lexError(error, i, line0, col0)
         return advance()
     }
 
-    private fun lexError(message: String, startIndex: Int, line0: Int, col0: Int): Nothing {
-        val snippetStart = source.lastIndexOf('\n', startIndex - 1).let { if(it == -1) 0 else it + 1 }
-        val snippetEnd = source.indexOf('\n', startIndex).let { if(it == -1) source.length else it }
-        val snippet = source.substring(snippetStart, snippetEnd)
-        val pointer = " ".repeat(startIndex - snippetStart) + "^"
-
-        throw RuntimeException("""
-            Lexing error in $fileName at line $line0, column $col0:
-            $message
-            $snippet
-            $pointer
-        """.trimIndent())
+    private fun lexError(error: ErrorCode, startIndex: Int, line0: Int, col0: Int): Nothing {
+        throw CoalError(Diagnostic(Severity.ERROR, error, fileName, Span(startIndex, startIndex, line0, col0), listOf(error.template)))
     }
  }

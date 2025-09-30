@@ -2,8 +2,10 @@ import ast.Program
 import cli.Args
 import cli.CLIArguments.parseArgs
 import codegen.LLVMEmitter
-import front.Lexer
-import front.Parser
+import front.lexer.Lexer
+import front.parser.Parser
+import front.types.TypeChecker
+import front.types.TypeInfo
 import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Path
@@ -11,6 +13,9 @@ import kotlin.io.path.createTempFile
 import kotlin.io.path.deleteIfExists
 import kotlin.system.exitProcess
 
+/**
+ * Main entry point for the compiler
+ */
 fun main(argv: Array<String>) {
     val args = parseArgs(argv)
     val inputPath = Path.of(args.input!!)
@@ -56,20 +61,22 @@ fun main(argv: Array<String>) {
             return
         }
 
-        val program: Program = Parser(tokens, inputPath.fileName.toString()).parseProgram()
+        val program: Program = Parser(source, tokens, inputPath.fileName.toString()).parseProgram()
         if(args.emitAst) {
             val json = Json { prettyPrint = true; classDiscriminator = "kind" }
             println(json.encodeToString(Program.serializer(), program))
             return
         }
 
+        val typeInfo = TypeInfo()
+        TypeChecker(inputPath.fileName.toString(), source, typeInfo).check(program)
+        val ir = LLVMEmitter(typeInfo, inputPath.fileName.toString()).emit(program)
+
         if(args.emitIR) {
-            val ir = LLVMEmitter().emit(program)
             println(ir)
             return
         }
 
-        val ir = LLVMEmitter().emit(program)
         val outPath = computeOutputBinaryPath(args, inputPath)
         val llPath =
             if(args.keepLL) {
@@ -108,6 +115,9 @@ fun main(argv: Array<String>) {
     }
 }
 
+/**
+ * Compute the output binary path based on args and input file
+ */
 private fun computeOutputBinaryPath(args: Args, inputPath: Path): Path {
     val user = args.output
     if(user != null) return Path.of(user)
@@ -119,10 +129,16 @@ private fun computeOutputBinaryPath(args: Args, inputPath: Path): Path {
     return inputPath.parent?.resolve(withExt) ?: Path.of(withExt)
 }
 
+/**
+ * Pick the C compiler to use, defaulting to clang (only clang is supported for now)
+ */
 private fun pickCompiler(ccArg: String?): String {
     return ccArg ?: "clang"
 }
 
+/**
+ * Change the extension of a path to a new one (without dot)
+ */
 private fun withExtension(p: Path, newExtNoDot: String): Path {
     val name = p.fileName.toString()
     val base = name.substringBeforeLast('.', name)

@@ -1,0 +1,6 @@
+fn main() {
+    var x = 5
+    if(x == 5 && !(x==4) || false) { }
+    elif(x != 5 && x < 10) { }
+    else { }
+}

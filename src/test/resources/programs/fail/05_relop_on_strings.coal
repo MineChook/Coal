@@ -1,0 +1,5 @@
+fn main() {
+    var a: string = "a"
+    var b: string = "b"
+    if(a < b) { }
+}

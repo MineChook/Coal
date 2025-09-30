@@ -3,8 +3,6 @@
 ## About
 **Coal is a programming language designed for simplicity and ease of use. It is a compiled language, meaning that it runs faster than python. Coal also has the low-level accessibility like C.**
 
-> Bullet is currently in development and is not ready for production use
-
 ### Features
 - Simple syntax
 - Fast execution
@@ -16,13 +14,11 @@
 
 **Variables are declared by using the var keyword like in kotlin:**
 ```coal
-var x: int = 5
+var x = 5 // int
 var y: string = "Hello, World!"
 ```
 
-*At the moment you cannot reassign a variable. This will be added soon*
-
-When creating a variable, you must specify the type of the variable. Coal is a statically typed language, meaning that the type of a variable cannot be changed after it is declared. 
+When creating a variable, you have the option to declare a type. You must always assign a type if you leave the variable undeclared, otherwise the compilier will figure out the type for you.
 
 **See the [Data Types](#data-types) section for more information.**
 
@@ -33,14 +29,6 @@ When creating a variable, you must specify the type of the variable. Coal is a s
 - string
 - bool
 - char
-
-**You can also Convert between Data Types:**
-
-```coal
-var int: int = 1    
-var stringOfInt: string = int.toString
-var floatOfInt: float = int.toFloat()
-```
 
 We hope to have more in the future!
 
@@ -56,6 +44,34 @@ fn main() {
 At the moment, you cannot make any other functions other than the main function. (We plan to add this soon.)
 
 **Important:** All coal files always start with a main function, which is the entry point of the program.
+
+### If statements
+```coal
+fn main() {
+    var x = 5
+    if(x == 5) {
+        println("x = 5")
+    } elif(x != 5 && x >= 10) {
+        println("x isnt 5 and is greater than 10")
+    } else {
+        println("x isnt 5 and is less than 10")
+    }
+}
+```
+
+### While loops
+```coal
+fn main() {
+    var x = 0
+    while(x < 100_000) {
+        x += 1
+        println(x)
+    }
+
+    println("We're done!")
+}
+
+```
 
 ### System Out and In
 **To print to the console, use the println function:**
@@ -77,7 +93,6 @@ Coming soon!
 - Multiplication: *
 - Division: /
 - Modulus: %
-- Power ^
 
 More coming soon!
 

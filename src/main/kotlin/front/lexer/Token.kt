@@ -1,5 +1,10 @@
-package front
+package front.lexer
 
+import diagnostics.Span
+
+/**
+ * Holds the different kinds of tokens that can be produced by the lexer
+ */
 sealed class TokenKind {
     // KEYWORDS
     data object Fn : TokenKind()
@@ -12,6 +17,10 @@ sealed class TokenKind {
     data object KwBool : TokenKind()
     data object KwChar : TokenKind()
     data object KwString : TokenKind()
+    data object If : TokenKind()
+    data object Elif : TokenKind()
+    data object Else : TokenKind()
+    data object While : TokenKind()
 
     // IDENTIFIERS & LITERALS
     data object Identifier : TokenKind()
@@ -28,6 +37,10 @@ sealed class TokenKind {
     data object Colon : TokenKind()
     data object Comma : TokenKind()
     data object Equal : TokenKind()
+    data object EqualEqual : TokenKind()
+    data object Bang : TokenKind()
+    data object BangEqual : TokenKind()
+    data object PlusEqual : TokenKind()
     data object Dot : TokenKind()
     data object DotDot : TokenKind()
     data object Plus : TokenKind()
@@ -36,7 +49,12 @@ sealed class TokenKind {
     data object Caret : TokenKind()
     data object Slash : TokenKind()
     data object Percent : TokenKind()
-    data object PlusEqual : TokenKind()
+    data object Lt : TokenKind()
+    data object LtEq : TokenKind()
+    data object Gt : TokenKind()
+    data object GtEq : TokenKind()
+    data object AndAnd : TokenKind()
+    data object OrOr : TokenKind()
 
     // END
     data object EOF : TokenKind()
@@ -44,7 +62,17 @@ sealed class TokenKind {
     override fun toString(): String = this::class.simpleName ?: super.toString()
 }
 
-data class Span(val start: Int, val end: Int, val line: Int, val col: Int)
+/**
+ * The Token class representing well, a token
+ *
+ * @param kind The kind of token
+ * @param lexeme The actual text of the token
+ * @param span The span of the token in the source code
+ * @param intValue The integer value of the token, if applicable
+ * @param floatValue The float value of the token, if applicable
+ * @param charValue The character value of the token, if applicable
+ * @param stringValue The string value of the token, if applicable
+ */
 data class Token(
     val kind: TokenKind,
     val lexeme: String,

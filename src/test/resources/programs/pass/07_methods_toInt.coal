@@ -1,0 +1,4 @@
+fn main() {
+    var s: string = "123"
+    var i = s.toInt()
+}

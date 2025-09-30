@@ -1,0 +1,4 @@
+fn main() {
+    var s: string = "3.14"
+    var f = s.toFloat()
+}
