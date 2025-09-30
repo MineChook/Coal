@@ -81,7 +81,7 @@ println("Hello, World!")
 
 **To take input from the user, use the input function:**
 ```coal
-    
+var name = input("What's your name? ")
 ```
 
 Coming soon!
