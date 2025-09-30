@@ -58,13 +58,12 @@ class LLVMEmitter(
 
         mod.declarePrintf()
         mod.declareSnprintf()
-        mod.declareFgets()
-        mod.declareStdin()
         mod.declareStrlen()
         mod.declareMalloc()
         mod.declareMemcpy()
         mod.declareStrtol()
         mod.declareStrtod()
+        mod.declareGetchar()
 
         for(d in prog.decls) {
             when(d) {
@@ -504,37 +503,85 @@ class LLVMEmitter(
         val prompt = valueOfExpr(b, args[0])
         val promptPtr = when(prompt) {
             is RValue.Aggregate -> b.extractValue("{ ptr, i32 }", prompt.literal, 0)
-            is RValue.ValueReg -> b.extractValue("{ ptr, i32 }", prompt.reg, 0)
+            is RValue.ValueReg  -> b.extractValue("{ ptr, i32 }", prompt.reg, 0)
             else -> ice("input(prompt): prompt must be string", args[0].span)
         }
 
         val fmtPrompt = mod.internCString("%s")
-        val fmtPromptPtr = b.gepGlobalFirst(fmtPrompt)
-        b.callPrintf(fmtPromptPtr, "ptr" to promptPtr)
+        b.callPrintf(b.gepGlobalFirst(fmtPrompt), "ptr" to promptPtr)
 
         val max = 1024
         val buf = b.allocaArray(max, "i8", "inbuf")
         val bufPtr = b.gepFirst(buf, max, "i8")
 
-        val stdinVal = b.load("ptr", "@__stdinp")
-        b.call("fgets", "ptr",
-            "ptr" to bufPtr,
-            "i32" to max.toString(),
-            "ptr" to stdinVal
-        )
+        val iPtr = b.alloca("i32", "i")
+        b.store("i32", "0", iPtr)
 
-        val len64 = b.call("strlen", "i64", "ptr" to bufPtr)
-        val len32 = b.trunc("i64", len64, "i32")
+        val L_loop     = fresh("in_loop")
+        val L_read     = fresh("in_read")
+        val L_checkNL  = fresh("in_check_nl")
+        val L_store    = fresh("in_store")
+        val L_done     = fresh("in_done")
+        val L_chkCR    = fresh("in_chkcr")
+        val L_afterCR  = fresh("in_aftercr")
+        val L_skipCR   = fresh("in_skipcr")
 
-        val cap32 = b.add("i32", len32, "1")
-        val cap64 = b.zext("i32", cap32, "i64")
-        val dst = b.call("malloc", "ptr", "i64" to cap64)
+        b.br(L_loop)
+        val bl = b.nextBlock(L_loop)
+        val iVal = bl.load("i32", iPtr)
+        val full = bl.icmp("sge", "i32", iVal, (max - 1).toString())
+        bl.brCond("i1", full, L_done, L_read)
 
-        b.call("memcpy", "ptr", "ptr" to dst, "ptr" to bufPtr, "i64" to len64)
-        val nulPtr = b.gepByteOffset(dst, len32)
-        b.store("i8", "0", nulPtr)
+        val brd = b.nextBlock(L_read)
+        val ch = brd.call("getchar", "i32")
+        val isEOF = brd.icmp("eq", "i32", ch, "-1")
+        brd.brCond("i1", isEOF, L_done, L_checkNL)
 
-        val packed = b.packString(dst, len32)
+        val bnl = b.nextBlock(L_checkNL)
+        val isNL = bnl.icmp("eq", "i32", ch, "10")
+        bnl.brCond("i1", isNL, L_done, L_store)
+
+        val bst = b.nextBlock(L_store)
+        val iCur = bst.load("i32", iPtr)
+        val dstPtr = bst.gepByteOffset(bufPtr, iCur)
+        val ch8 = bst.trunc("i32", ch, "i8")
+        bst.store("i8", ch8, dstPtr)
+        val iNext = bst.add("i32", iCur, "1")
+        bst.store("i32", iNext, iPtr)
+        bst.br(L_loop)
+
+        val bd = b.nextBlock(L_done)
+        val len0 = bd.load("i32", iPtr)
+
+        val hasAny = bd.icmp("sgt", "i32", len0, "0")
+        bd.brCond("i1", hasAny, L_chkCR, L_afterCR)
+
+        val bcr = b.nextBlock(L_chkCR)
+        val lenm1 = bcr.sub("i32", len0, "1")
+        val lastPtr = bcr.gepByteOffset(bufPtr, lenm1)
+        val last8 = bcr.load("i8", lastPtr)
+        val last32 = bcr.zext("i8", last8, "i32")
+        val isCR = bcr.icmp("eq", "i32", last32, "13")
+        bcr.brCond("i1", isCR, L_skipCR, L_afterCR)
+
+        val bsk = b.nextBlock(L_skipCR)
+        bsk.store("i32", lenm1, iPtr)
+        bsk.br(L_afterCR)
+
+        val baf = b.nextBlock(L_afterCR)
+        val len = baf.load("i32", iPtr)
+
+        val nulDst = baf.gepByteOffset(bufPtr, len)
+        baf.store("i8", "0", nulDst)
+        val cap32 = baf.add("i32", len, "1")
+        val cap64 = baf.zext("i32", cap32, "i64")
+        val dst = baf.call("malloc", "ptr", "i64" to cap64)
+        val len64 = baf.zext("i32", len, "i64")
+        baf.call("memcpy", "ptr", "ptr" to dst, "ptr" to bufPtr, "i64" to len64)
+        val nulH = baf.gepByteOffset(dst, len)
+        baf.store("i8", "0", nulH)
+
+        val packed = baf.packString(dst, len)
         return RValue.ValueReg("{ ptr, i32 }", packed)
     }
 
