@@ -205,6 +205,16 @@ class TypeChecker(
                     return ret
                 }
 
+                if(e.callee == "input") {
+                    if(e.args.size != 1) error(e.span, ErrorCode.ArityMismatch, e.callee, "${e.args.size}", "1")
+                    val pTy = typeOf(e.args[0])
+                    if(pTy.name != "string") error(e.args[0].span, ErrorCode.TypeMismatch, "string", pTy.name)
+                    val ret = NamedType("string", e.span)
+                    types.exprTypes[e] = ret
+
+                    return ret
+                }
+
                 val sig = functions[e.callee] ?: error(e.span, ErrorCode.UnknownFunction, e.callee)
                 val (paramTys, retTy) = sig
                 if(e.args.size != paramTys.size) error(e.span, ErrorCode.ArityMismatch, e.callee, "${e.args.size}", "${paramTys.size}")
