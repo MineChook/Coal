@@ -8,4 +8,8 @@ fn main() {
     println(i)
     var p: int = 5^2
     println(p)
+    var letter: char = 'A'
+    println(letter.toString())
+    var letterAsString: string = letter.toString()
+    println(letterAsString)
 }

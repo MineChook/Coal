@@ -296,7 +296,7 @@ class LLVMEmitter {
 
     private fun numberOrCharToString(b: BlockBuilder, rv: RValue): RValue {
         val (ty, op) = asOperand(rv)
-        val fmt = when(ty) { "i32","i1","i8" -> "%d"; "double" -> "%f"; else -> error("toString() not supported for type $ty") }
+        val fmt = when(ty) { "i32","i1" -> "%d"; "double" -> "%f"; "i8" -> "%c"; else -> error("toString() not supported for type $ty") }
 
         val fmtRef = mod.internCString(fmt)
         val fmtPtr = b.gepGlobalFirst(fmtRef)
@@ -312,7 +312,6 @@ class LLVMEmitter {
         val ssa = b.packString(bufPtr, written)
         return RValue.ValueReg("{ ptr, i32 }", ssa)
     }
-
     private fun stringToIntIfLiteral(recv: Expr): RValue {
         return when(recv) {
             is StringLit -> {

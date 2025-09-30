@@ -3,6 +3,8 @@
 ## About
 **Coal is a programming language designed for simplicity and ease of use. It is a compiled language, meaning that it runs faster than python. Coal also has the low-level accessibility like C.**
 
+> Bullet is currently in development and is not ready for production use
+
 ### Features
 - Simple syntax
 - Fast execution
@@ -18,6 +20,8 @@ var x: int = 5
 var y: string = "Hello, World!"
 ```
 
+*At the moment you cannot reassign a variable. This will be added soon*
+
 When creating a variable, you must specify the type of the variable. Coal is a statically typed language, meaning that the type of a variable cannot be changed after it is declared. 
 
 **See the [Data Types](#data-types) section for more information.**
@@ -29,6 +33,14 @@ When creating a variable, you must specify the type of the variable. Coal is a s
 - string
 - bool
 - char
+
+**You can also Convert between Data Types:**
+
+```coal
+var int: int = 1    
+var stringOfInt: string = int.toString
+var floatOfInt: float = int.toFloat()
+```
 
 We hope to have more in the future!
 
@@ -65,6 +77,7 @@ Coming soon!
 - Multiplication: *
 - Division: /
 - Modulus: %
+- Power ^
 
 More coming soon!
 
